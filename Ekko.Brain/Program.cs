@@ -1,5 +1,6 @@
 using Ekko.Brain;
 using Ekko.Brain.Pipeline;
+using Ekko.Brain.ServerOps;
 
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
@@ -29,5 +30,15 @@ app.MapPost("/message", async (MessageRequest request, MessagePipeline pipeline,
     request.Error() is { } error
         ? Results.BadRequest(new { error })
         : Results.Ok(await pipeline.HandleAsync(request, ct)));
+
+// Server-ops runs waiting for approval, for clients other than the conversation that started them (the deck, a phone).
+app.MapGet("/runs/waiting", (ServerOpsAgent agent) =>
+    Results.Ok(agent.Waiting().Select(r => new { r.Id, r.ConversationId, r.Request, r.Question, r.Updated })));
+
+app.MapPost("/runs/{id}/approve", async (string id, MessagePipeline pipeline, CancellationToken ct) =>
+    Results.Ok(await pipeline.ResolveRunAsync(id, approved: true, "api", ct)));
+
+app.MapPost("/runs/{id}/deny", async (string id, MessagePipeline pipeline, CancellationToken ct) =>
+    Results.Ok(await pipeline.ResolveRunAsync(id, approved: false, "api", ct)));
 
 app.Run();

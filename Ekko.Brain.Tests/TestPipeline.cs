@@ -3,6 +3,7 @@ using Ekko.Brain.Desktop;
 using Ekko.Brain.Llm;
 using Ekko.Brain.Media;
 using Ekko.Brain.Pipeline;
+using Ekko.Brain.ServerOps;
 using Ekko.Brain.Tools;
 
 namespace Ekko.Brain.Tests;
@@ -10,12 +11,14 @@ namespace Ekko.Brain.Tests;
 public static class TestPipeline
 {
     /// <summary>A pipeline whose route and extract steps both use <paramref name="llm"/> (default: unreachable) with no fallback.</summary>
-    public static MessagePipeline Create(ConversationStore store, ToolCatalog catalog, TraceLog trace, ILlmClient? llm = null)
+    public static MessagePipeline Create(ConversationStore store, ToolCatalog catalog, TraceLog trace, ILlmClient? llm = null, ServerOpsAgent? agent = null)
     {
         var clients = new Dictionary<string, ILlmClient> { ["qwen"] = llm ?? new ScriptedLlm("qwen", [null]) };
         var steps = new Dictionary<string, StepModels> { ["route"] = new() { Primary = "qwen" }, ["extract"] = new() { Primary = "qwen" } };
         var call = new StructuredCall(clients, steps, trace);
-        return new MessagePipeline(store, catalog, new Router(call), new DomainHandler(catalog, call), trace);
+        agent ??= new ServerOpsAgent(new AgentModels(null, null), catalog, new RunStore(Path.Combine(Path.GetTempPath(), $"ekko-runs-{Guid.NewGuid():N}"), TimeProvider.System),
+            new ServerOpsOptions(), trace, TimeProvider.System);
+        return new MessagePipeline(store, catalog, new Router(call), new DomainHandler(catalog, call), agent, trace);
     }
 
     public static ITool[] DesktopTools(FakeHttp pc)

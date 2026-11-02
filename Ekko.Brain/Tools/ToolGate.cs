@@ -7,6 +7,9 @@ namespace Ekko.Brain.Tools;
 /// <summary>Ekko read back a call and is waiting for "yes".</summary>
 public sealed record PendingConfirm(string Tool, JsonElement Args) : Pending;
 
+/// <summary>An Approve-class call held by the gate. The agent stores it in a saved run, not in short-lived conversation state.</summary>
+public sealed record PendingApproval(string Tool, JsonElement Args) : Pending;
+
 /// <summary>
 /// The only path from a chosen tool call to execution - fast path and model alike. The model decides what to call;
 /// the tool's [RiskClass] decides what must happen first.
@@ -29,8 +32,10 @@ public static class ToolGate
             Risk.ReadOnly or Risk.Reversible => await tool.RunAsync(args, ct),
             Risk.WriteConfirm or Risk.ExternalConfirm when !confirmed => Confirm(tool.Name, tool.Describe(args), args),
             Risk.WriteConfirm or Risk.ExternalConfirm => await tool.RunAsync(args, ct),
-            // shortcut: Approve (push to phone, resume the saved run) arrives with server ops; until then it's refused.
-            _ => ToolResult.Failed($"{tool.Name} needs approval from your phone, which isn't built yet."),
+            // The caller (the server-ops agent) saves its run and asks; approval may come hours later, from any channel.
+            Risk.Approve when !confirmed => ToolResult.Ask($"{tool.Describe(args)}. Approve?", new PendingApproval(tool.Name, args.Clone())),
+            Risk.Approve => await tool.RunAsync(args, ct),
+            _ => ToolResult.Failed($"{tool.Name} has an unknown risk class, so it can't run."),
         };
     }
 

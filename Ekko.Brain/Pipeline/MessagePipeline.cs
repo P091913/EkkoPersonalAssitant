@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Ekko.Brain.ServerOps;
 using Ekko.Brain.Tools;
 
 namespace Ekko.Brain.Pipeline;
 
 /// <summary>pending state -> fast path -> router -> domain handler -> reply. Each request stops at the first step that can handle it.</summary>
-public sealed class MessagePipeline(ConversationStore conversations, ToolCatalog catalog, Router router, DomainHandler handler, TraceLog trace)
+public sealed class MessagePipeline(ConversationStore conversations, ToolCatalog catalog, Router router, DomainHandler handler, ServerOpsAgent agent,
+    TraceLog trace)
 {
     public async Task<MessageReply> HandleAsync(MessageRequest request, CancellationToken ct)
     {
@@ -18,6 +20,14 @@ public sealed class MessagePipeline(ConversationStore conversations, ToolCatalog
             trace.Write(t with { Step = "pending", Hit = pending is not null, Result = pending?.GetType().Name });
             if (pending is not null && await ResumeAsync(pending, request, t, ct) is { } resumed)
                 return Reply(t, resumed, started);
+
+            // A server-ops run waiting for approval lives on disk, not in the short-lived conversation state.
+            var approve = Utterance.IsApprove(request.Text);
+            if ((approve || Utterance.IsDeny(request.Text)) && agent.WaitingFor(request.ConversationId) is { } run)
+            {
+                trace.Write(t with { Step = "pending", Hit = true, Result = $"run {run.Id}" });
+                return Reply(t, await agent.ResumeAsync(run.Id, approve, t, ct), started);
+            }
 
             if (FastPath.Match(request.Text) is { } fast && catalog.Find(fast.Tool) is { } fastTool)
             {
@@ -47,6 +57,15 @@ public sealed class MessagePipeline(ConversationStore conversations, ToolCatalog
         }
     }
 
+    /// <summary>An approval from outside a conversation: the deck, or a phone later. Traced like a message.</summary>
+    public async Task<MessageReply> ResolveRunAsync(string runId, bool approved, string channel, CancellationToken ct)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var t = new TraceEvent(Guid.NewGuid().ToString("N")[..12], $"run:{runId}", channel);
+        trace.Write(t with { Step = "request", Input = approved ? "approve" : "deny" });
+        return Reply(t, await agent.ResumeAsync(runId, approved, t, ct), started);
+    }
+
     /// <summary>Null when the message isn't an answer to what was pending; it's then handled as a new request.</summary>
     private async Task<string?> ResumeAsync(Pending pending, MessageRequest request, TraceEvent t, CancellationToken ct)
     {
@@ -72,6 +91,9 @@ public sealed class MessagePipeline(ConversationStore conversations, ToolCatalog
     /// <param name="text">The command to act on - after a "yes" to "is that about the PC?", the original one.</param>
     private async Task<string> HandleDomainAsync(Domain domain, string text, MessageRequest request, TraceEvent t, CancellationToken ct)
     {
+        // The one domain that investigates in several steps instead of extracting one call (DR-4).
+        if (domain == Domain.ServerOps)
+            return await agent.StartAsync(text, request.ConversationId, t, ct);
         if (catalog.ForDomain(domain).Count == 0)
             return $"I can't help with {Router.About(domain)} yet.";
 

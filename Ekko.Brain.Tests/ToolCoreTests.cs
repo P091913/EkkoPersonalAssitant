@@ -83,11 +83,15 @@ public class ToolCoreTests
     }
 
     [Fact]
-    public async Task Approve_is_refused_even_when_confirmed()
+    public async Task Approve_is_held_until_approved()
     {
         var tool = new ApproveTool();
-        Assert.False((await ToolGate.ExecuteAsync(tool, Valid, confirmed: true, CancellationToken.None)).Ok);
+        var held = await ToolGate.ExecuteAsync(tool, Valid, confirmed: false, CancellationToken.None);
+        Assert.IsType<PendingApproval>(held.Next);
         Assert.Equal(0, tool.Runs);
+
+        await ToolGate.ExecuteAsync(tool, Valid, confirmed: true, CancellationToken.None);
+        Assert.Equal(1, tool.Runs);
     }
 
     [Fact]
