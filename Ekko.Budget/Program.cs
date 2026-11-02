@@ -36,7 +36,7 @@ app.MapGet("/budget/status", (string? month, BudgetBook book, CancellationToken 
     Requests.MonthProblem(month) is { } p ? Bad(p) : Run(book.StatusAsync(month, ct)));
 
 app.MapPost("/budget/bills/find", (FindRequest r, BudgetBook book, CancellationToken ct) =>
-    Requests.ItemProblem(r.Item) is { } p ? Bad(p) : Run(book.FindAsync(r.Item!, ct)));
+    Requests.Problem(r) is { } p ? Bad(p) : Run(book.FindAsync(r.Item, r.Amount, ct)));
 
 app.MapPost("/budget/bills/paid", (PaidRequest r, BudgetBook book, CancellationToken ct) =>
     Requests.Problem(r) is { } p ? Bad(p) : Run(book.MarkPaidAsync(r, ct)));

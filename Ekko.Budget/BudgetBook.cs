@@ -9,7 +9,8 @@ public sealed record Candidate(string Tab, int Row, string Item, decimal Amount,
 /// <param name="Message">A sentence ready to read out.</param>
 public sealed record Answer(string Status, string Message, IReadOnlyList<Candidate>? Candidates = null);
 
-public sealed record FindRequest(string? Item);
+/// <param name="Amount">Dollars, positive. Finds the row by amount when <paramref name="Item"/> names nothing.</param>
+public sealed record FindRequest(string? Item, decimal? Amount);
 
 /// <param name="Amount">What it really came to, in dollars, positive; only when it differs from the plan.</param>
 public sealed record PaidRequest(string? Tab, int Row, string? Item, decimal? Amount);
@@ -36,18 +37,22 @@ public sealed class BudgetBook(GoogleSheets sheets, TimeProvider clock, ILogger<
     }
 
     /// <summary>This month's unchecked rows first; last month's if nothing this month fits (a late bill).</summary>
-    public async Task<Answer> FindAsync(string item, CancellationToken ct)
+    public async Task<Answer> FindAsync(string? item, decimal? amount, CancellationToken ct)
     {
+        // The same choice Ledger.FindUnchecked makes: by name if the words name something, otherwise by amount.
+        var what = Ledger.Names(item) ? item!.Trim() : amount is { } a ? $"row for {Ledger.Money(a)}" : null;
+        if (what is null)
+            return new Answer("not_found", "Which one? Say its name or its amount.");
         foreach (var day in new[] { Today, Today.AddMonths(-1) })
         {
-            if (await LoadAsync(MonthName(day), ct) is not { } month || Ledger.FindUnchecked(month, item, Today) is not { Count: > 0 } rows)
+            if (await LoadAsync(MonthName(day), ct) is not { } month || Ledger.FindUnchecked(month, item ?? "", Today, amount) is not { Count: > 0 } rows)
                 continue;
             var candidates = rows.Take(5).Select(r => new Candidate(month.Tab, r.Number, r.Item, r.Amount!.Value, Ledger.Label(r))).ToList();
             return candidates.Count == 1
                 ? new Answer("found", $"Found {candidates[0].Label}.", candidates)
                 : new Answer("ambiguous", $"Which one: {string.Join(", ", candidates.SkipLast(1).Select(c => c.Label))} or {candidates[^1].Label}?", candidates);
         }
-        return new Answer("not_found", $"I couldn't find an unchecked {item} on this month's or last month's tab.");
+        return new Answer("not_found", $"I couldn't find an unchecked {what} on this month's or last month's tab.");
     }
 
     public async Task<Answer> MarkPaidAsync(PaidRequest request, CancellationToken ct)

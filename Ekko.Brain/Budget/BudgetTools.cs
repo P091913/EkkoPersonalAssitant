@@ -13,8 +13,8 @@ public sealed record BudgetStatusArgs(
     [property: Description("Only if the user named a month.")] MonthName? Month = null);
 
 public sealed record MarkBillPaidArgs(
-    [property: MinLength(1), MaxLength(80), Description("The bill or paycheck as the user named it, without words like paid or bill: 'water', 'Verizon', 'paycheck'.")] string Item,
-    [property: Range(0.01, 100000), Description("What it really came to, in dollars, only if the user said an amount.")] decimal? Amount = null);
+    [property: MinLength(1), MaxLength(80), Description("The row as the user named it, without words like paid, bill or expense: 'water', 'Verizon', 'paycheck', 'Netflix'. Leave it out if they gave only an amount.")] string? Item = null,
+    [property: Range(0.01, 100000), Description("Dollars, only if the user said an amount: what it really came to, or the amount that picks out the row ('the 12.47 one').")] decimal? Amount = null);
 
 /// <param name="Amount">Only when it differs from the row's planned amount.</param>
 public sealed record MarkRowPaidArgs(string Tab, int Row, string Item, string Label, decimal? Amount = null);
@@ -42,12 +42,16 @@ public sealed class GetBudgetStatus(BudgetService budget)
 [RiskClass(Risk.ReadOnly)]
 public sealed class MarkBillPaid(BudgetService budget)
     : Tool<MarkBillPaidArgs>("mark_bill_paid", Domain.Budget,
-        "Check off a planned bill or paycheck on the expenses sheet when the user says it's paid or came in: " +
-        "'I paid the water bill', 'Verizon is paid, it was 220', 'my paycheck came in'.")
+        "Check off a row already on the expenses sheet (a bill, subscription, paycheck or planned expense) when the user says it's " +
+        "paid, came in or went through, or asks to mark it, check it off or mark it complete: 'I paid the water bill', " +
+        "'Verizon is paid, it was 220', 'my paycheck came in', 'mark Netflix as paid', 'check off the 12.47 one'.")
 {
     protected override async Task<ToolResult> RunAsync(MarkBillPaidArgs args, CancellationToken ct)
     {
-        var answer = await budget.PostAsync("budget/bills/find", new { item = args.Item }, ct);
+        if (args.Item is null && args.Amount is null)
+            return ToolResult.Failed("Which one? Say its name or its amount.");
+        // The service finds by name when the item names something, otherwise by amount (Ledger.FindUnchecked).
+        var answer = await budget.PostAsync("budget/bills/find", new { item = args.Item, amount = args.Amount }, ct);
         var rows = answer.Candidates
             .Select(c => new MarkRowPaidArgs(c.Tab, c.Row, c.Item, c.Label, args.Amount == Math.Abs(c.Amount) ? null : args.Amount))
             .ToList();
@@ -83,8 +87,9 @@ public sealed class MarkRowPaid(BudgetService budget)
 [RiskClass(Risk.WriteConfirm)]
 public sealed class AddExpense(BudgetService budget)
     : Tool<AddExpenseArgs>("add_expense", Domain.Budget,
-        "Add something to the expenses sheet that isn't a planned row, dated today: 'unexpected expense, 380 for a new tire', " +
-        "'I spent 12 bucks on lunch', 'I got 50 back from a refund'. For a bill already on the sheet, use mark_bill_paid.")
+        "Add a new row for one-off money spent or received, dated today: 'unexpected expense, 380 for a new tire', " +
+        "'I spent 12 bucks on lunch', 'I got 50 back from a refund'. Recurring bills, insurance, subscriptions and paychecks are " +
+        "already rows on the sheet: one of those being paid, going through or checked off is mark_bill_paid, never this tool.")
 {
     protected override string Describe(AddExpenseArgs a) => a.Income
         ? $"Add {a.Item}, {BudgetResult.Money(a.Amount)} coming in"

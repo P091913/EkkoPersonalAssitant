@@ -60,8 +60,13 @@
 {"text": "I spent 12 bucks on lunch", "domain": "budget", "tool": "add_expense", "args": {"item": "lunch", "amount": 12}}
 {"text": "I got 50 back from a refund", "domain": "budget", "tool": "add_expense", "args": {"item": "refund", "amount": 50, "income": true}}
 {"text": "log 45.99 for the vet, that one was planned", "domain": "budget", "tool": "add_expense", "args": [{"item": "vet", "amount": 45.99, "planned": true}, {"item": "the vet", "amount": 45.99, "planned": true}]}
+// budget - from the deck's trace (Nov 2), with made-up names and amounts. A row picked out by amount alone; "expense"
+// names no row, so the budget service looks up by amount either way (DR-32).
+{"text": "can you mark an expense off my spreadsheet? $12.47", "domain": "budget", "tool": "mark_bill_paid", "args": [{"amount": 12.47}, {"item": "expense", "amount": 12.47}]}
+{"text": "check off the 12.47 one", "domain": "budget", "tool": "mark_bill_paid", "args": {"amount": 12.47}}
+{"text": "mark netflix as paid", "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "netflix"}}
 
-// domains not built yet: routing only
+// routing only: domains with no extraction step (not built yet, server ops' agent loop, chat's reply)
 {"text": "turn on the tv", "domain": "tv"}
 {"text": "switch the tv off", "domain": "tv"}
 {"text": "log two eggs and toast for breakfast", "domain": "food"}
@@ -71,3 +76,4 @@
 {"text": "restart jellyfin", "domain": "server_ops"}
 {"text": "what's the capital of france", "domain": "chat"}
 {"text": "tell me a joke", "domain": "chat"}
+{"text": "how's your day going", "domain": "chat"}

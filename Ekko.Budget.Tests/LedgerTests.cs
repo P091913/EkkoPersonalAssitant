@@ -27,7 +27,8 @@ public class LedgerTests
         R(11, "2026-11-28", "Sewage insurance", -40, 922, false),
     ]);
 
-    private static List<int> Found(string said) => Ledger.FindUnchecked(November(), said, Nov16).Select(r => r.Number).ToList();
+    private static List<int> Found(string said, decimal? amount = null) =>
+        Ledger.FindUnchecked(November(), said, Nov16, amount).Select(r => r.Number).ToList();
 
     [Fact]
     public void The_layout_comes_from_the_header_whatever_the_checkbox_column_is_called()
@@ -75,6 +76,26 @@ public class LedgerTests
 
     [Fact]
     public void Words_match_the_start_of_a_rows_words() => Assert.Equal([10], Found("car"));
+
+    [Theory]
+    [InlineData("", 58, new[] { 7 })]                 // "check off the $58 one"
+    [InlineData("expense", 58, new[] { 7 })]          // "mark an expense off my spreadsheet, $58": no name in that
+    [InlineData("the 58 one", 58, new[] { 7 })]       // the number is the amount, not a name
+    [InlineData("", 40, new[] { 8, 11 })]             // two rows at $40: ask
+    [InlineData("", 150, new[] { 6 })]                // the numbered Groceries rows: the one nearest today
+    [InlineData("", 800, new int[0])]                 // Rent is $800 but already checked off
+    [InlineData("", 99, new int[0])]
+    public void Without_a_name_the_amount_finds_the_row(string said, decimal amount, int[] rows) => Assert.Equal(rows, Found(said, amount));
+
+    [Fact]
+    public void With_a_name_the_amount_is_what_it_came_to_not_part_of_the_lookup() => Assert.Equal([7], Found("water", 60));
+
+    [Theory]
+    [InlineData("water", true)]
+    [InlineData("the expense", false)]
+    [InlineData("the 12.47 one", false)]
+    [InlineData(null, false)]
+    public void Only_real_words_name_a_row(string? said, bool names) => Assert.Equal(names, Ledger.Names(said));
 
     [Fact]
     public void Ticking_keeps_the_rows_sign_and_writes_the_amount_only_when_it_changed()
@@ -169,6 +190,17 @@ public class RequestTests
     [InlineData("Tire\n=1", 5, false)]
     public void Expenses_are_checked_before_they_reach_the_sheet(string item, decimal amount, bool ok) =>
         Assert.Equal(ok, Requests.Problem(new ExpenseRequest(item, amount, false, false)) is null);
+
+    [Theory]
+    [InlineData("water", null, true)]
+    [InlineData(null, 9.5, true)]
+    [InlineData("", 9.5, true)]
+    [InlineData(null, null, false)]
+    [InlineData("  ", null, false)]
+    [InlineData(null, 0d, false)]
+    [InlineData("water", 12.345, false)]
+    public void A_lookup_needs_a_name_or_an_amount(string? item, double? amount, bool ok) =>
+        Assert.Equal(ok, Requests.Problem(new FindRequest(item, (decimal?)amount)) is null);
 
     [Fact]
     public void A_paid_request_needs_a_real_row_and_a_quote_free_tab()

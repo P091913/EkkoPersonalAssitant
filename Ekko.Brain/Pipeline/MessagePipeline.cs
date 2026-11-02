@@ -7,7 +7,7 @@ namespace Ekko.Brain.Pipeline;
 
 /// <summary>pending state -> fast path -> router -> domain handler -> reply. Each request stops at the first step that can handle it.</summary>
 public sealed class MessagePipeline(ConversationStore conversations, ToolCatalog catalog, Router router, DomainHandler handler, ServerOpsAgent agent,
-    TraceLog trace)
+    Chat chat, TraceLog trace)
 {
     public async Task<MessageReply> HandleAsync(MessageRequest request, CancellationToken ct)
     {
@@ -94,6 +94,9 @@ public sealed class MessagePipeline(ConversationStore conversations, ToolCatalog
         // The one domain that investigates in several steps instead of extracting one call (DR-4).
         if (domain == Domain.ServerOps)
             return await agent.StartAsync(text, request.ConversationId, t, ct);
+        // The one domain with no tools on purpose: it answers, it never acts (DR-31).
+        if (domain == Domain.Chat)
+            return await chat.ReplyAsync(text, t, ct);
         if (catalog.ForDomain(domain).Count == 0)
             return $"I can't help with {Router.About(domain)} yet.";
 
