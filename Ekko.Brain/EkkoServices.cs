@@ -3,6 +3,7 @@ using Ekko.Brain.Desktop;
 using Ekko.Brain.Llm;
 using Ekko.Brain.Media;
 using Ekko.Brain.Pipeline;
+using Ekko.Brain.ServerOps;
 using Ekko.Brain.Tools;
 
 namespace Ekko.Brain;
@@ -24,6 +25,9 @@ public static class EkkoServices
         foreach (var (step, models) in llm.Steps)
             if (!llm.Clients.ContainsKey(models.Primary) || models.Fallback is { } f && !llm.Clients.ContainsKey(f))
                 throw new InvalidOperationException($"Llm:Steps:{step} names a client that isn't in Llm:Clients.");
+        // The agent loop uses Claude's native tool calling, which only the Anthropic client speaks.
+        if (llm.Steps.GetValueOrDefault("server_ops") is { } opsStep && new[] { opsStep.Primary, opsStep.Fallback }.OfType<string>().Any(n => llm.Clients[n].Kind != LlmKind.Anthropic))
+            throw new InvalidOperationException("Llm:Steps:server_ops must name Anthropic clients.");
         var anthropicKey = config["ANTHROPIC_API_KEY"]; // user-secrets in Development, environment in Docker
         foreach (var (name, options) in llm.Clients)
             services.AddHttpClient(name, http => LlmSetup.ConfigureHttp(options, http));
@@ -73,6 +77,27 @@ public static class EkkoServices
         services.AddScoped<ITool, MarkBillPaid>();
         services.AddScoped<ITool, MarkRowPaid>();
         services.AddScoped<ITool, AddExpense>();
+
+        var ops = config.GetSection("ServerOps").Get<ServerOpsOptions>() ?? throw new InvalidOperationException("ServerOps config is missing.");
+        services.AddSingleton(ops);
+        services.AddHttpClient<IServerHost, DockerHost>(c =>
+        {
+            c.BaseAddress = new Uri(ops.DockerUrl.TrimEnd('/') + "/");
+            c.Timeout = TimeSpan.FromSeconds(ops.ToolTimeoutSeconds);
+        });
+        services.AddScoped<ITool, ListContainers>();
+        services.AddScoped<ITool, ReadContainerLogs>();
+        services.AddScoped<ITool, GetDiskUsage>();
+        services.AddScoped<ITool, FindLargeDirs>();
+        services.AddScoped<ITool, RestartContainer>();
+        services.AddSingleton(sp => new RunStore(Path.Combine(contentRoot, ops.RunsPath), sp.GetRequiredService<TimeProvider>()));
+        services.AddScoped(sp =>
+        {
+            var clients = LlmSetup.CreateClients(llm, sp.GetRequiredService<IHttpClientFactory>().CreateClient, anthropicKey);
+            IAgentModel? Pick(string? name) => name is not null ? clients.GetValueOrDefault(name) as IAgentModel : null;
+            return llm.Steps.GetValueOrDefault("server_ops") is { } step ? new AgentModels(Pick(step.Primary), Pick(step.Fallback)) : new AgentModels(null, null);
+        });
+        services.AddScoped<ServerOpsAgent>();
 
         services.AddScoped<ToolCatalog>();
         services.AddScoped<Router>();

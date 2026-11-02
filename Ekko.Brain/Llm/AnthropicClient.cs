@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 namespace Ekko.Brain.Llm;
 
 /// <summary>Claude Messages API over raw HTTP. Output is constrained with output_config.format (structured outputs).</summary>
-public sealed class AnthropicClient(HttpClient http, string model, string apiKey, string? effort) : ILlmClient
+public sealed class AnthropicClient(HttpClient http, string model, string apiKey, string? effort) : ILlmClient, IAgentModel
 {
     // Structured outputs reject numeric and length constraints; our own validation still enforces them.
     private static readonly string[] Unsupported = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength"];
@@ -30,10 +30,7 @@ public sealed class AnthropicClient(HttpClient http, string model, string apiKey
             ["output_config"] = outputConfig,
         };
 
-        var headers = new HttpRequestMessage();
-        headers.Headers.Add("x-api-key", apiKey);
-        headers.Headers.Add("anthropic-version", "2026-10-21");
-        var json = await LlmHttp.PostAsync(http, "messages", body, headers, ct);
+        var json = await LlmHttp.PostAsync(http, "messages", body, Headers(), ct);
 
         var stop = json.TryGetProperty("stop_reason", out var s) ? s.GetString() : null;
         if (stop is "refusal" or "max_tokens")
@@ -48,6 +45,35 @@ public sealed class AnthropicClient(HttpClient http, string model, string apiKey
 
         var usage = json.GetProperty("usage");
         return new LlmResult(text, model, LlmHttp.Int(usage, "input_tokens"), LlmHttp.Int(usage, "output_tokens"));
+    }
+
+    public async Task<AgentTurn> NextAsync(string system, JsonArray tools, JsonArray messages, CancellationToken ct)
+    {
+        var body = new JsonObject
+        {
+            ["model"] = model,
+            // Thinking shares this cap; a turn is a few tool calls or a short spoken answer.
+            ["max_tokens"] = 8192,
+            ["system"] = system,
+            ["tools"] = tools.DeepClone(),
+            ["messages"] = messages.DeepClone(),
+        };
+        if (effort is not null)
+            body["output_config"] = new JsonObject { ["effort"] = effort };
+
+        var json = await LlmHttp.PostAsync(http, "messages", body, Headers(), ct);
+        var content = JsonNode.Parse(json.GetProperty("content").GetRawText()) as JsonArray ?? throw new LlmException("the response had no content");
+        var usage = json.GetProperty("usage");
+        return new AgentTurn(content, json.GetProperty("stop_reason").GetString() ?? "", model,
+            LlmHttp.Int(usage, "input_tokens"), LlmHttp.Int(usage, "output_tokens"));
+    }
+
+    private HttpRequestMessage Headers()
+    {
+        var headers = new HttpRequestMessage();
+        headers.Headers.Add("x-api-key", apiKey);
+        headers.Headers.Add("anthropic-version", "2026-10-21");
+        return headers;
     }
 
     private static JsonNode Strip(JsonNode node)

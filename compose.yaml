@@ -23,7 +23,25 @@ services:
       TvRemote__BaseUrl: http://host.docker.internal:5055/   # tvremote container, via its published port
       Budget__BaseUrl: http://host.docker.internal:5080/     # the budget service below, via its published port
     volumes:
-      - ./data:/app/data       # trace.jsonl, readable from the host
+      - ./data:/app/data       # trace.jsonl and saved server-ops runs, readable from the host
+      # The server-ops agent measures the media drive. Read-only, and the only host folder it can see (ServerOps:Roots).
+      - type: bind
+        source: D:/Media
+        target: /host/media
+        read_only: true
+    networks: [default, docker-api]
+
+  # The Brain's only way to Docker: HAProxy with Ekko's own rules (ops/docker-proxy/haproxy.cfg). A sidecar, not a
+  # service: no published port, on a network only the Brain shares, because the socket behind it is root on this PC.
+  docker-proxy:
+    image: haproxy:3.2.26-alpine
+    container_name: ekko-docker-proxy
+    restart: unless-stopped
+    user: root                 # the socket is root-only; this container holds it so the Brain never does
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ops/docker-proxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks: [docker-api]
 
   budget:
     build:
@@ -46,3 +64,7 @@ services:
 secrets:
   google-sheets:
     file: ${GOOGLE_SHEETS_KEY_FILE:?set GOOGLE_SHEETS_KEY_FILE in .env to the service account's JSON key}
+
+networks:
+  docker-api:
+    internal: true             # no route out, and nothing outside it can reach the proxy

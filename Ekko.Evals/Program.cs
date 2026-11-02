@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 // Runs every utterance through the fast path, router and extractor exactly as the Brain wires them (AddEkko),
 // and scores each step. It never runs a tool: nothing on the PC or TV changes.
 //   dotnet run --project Ekko.Evals            (uses Ekko.Brain/appsettings.json + its user-secrets)
+//   dotnet run --project Ekko.Evals -- server-ops   (agent scenarios against canned servers; real Claude, a few cents)
 
 var here = Here();
 var brainDir = Path.GetFullPath(Path.Combine(here, "..", "Ekko.Brain"));
@@ -20,6 +21,12 @@ var config = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .AddCommandLine(args)
     .Build();
+
+if (args.Contains("server-ops"))
+{
+    await ServerOpsScenarios.RunAsync(config, brainDir);
+    return;
+}
 
 var tracePath = Path.Combine(Path.GetTempPath(), $"ekko-eval-{DateTime.Now:yyyyMMdd-HHmmss}.jsonl");
 var services = new ServiceCollection().AddLogging().AddEkko(config, brainDir);

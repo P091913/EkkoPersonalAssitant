@@ -23,4 +23,12 @@ public static class Utterance
     public static bool IsYes(string text) => Yes.Contains(Simplify(text));
 
     public static bool IsNo(string text) => No.Contains(Simplify(text));
+
+    // Answers to a waiting server-ops run. "stop" is left out on purpose: on its own it means the TV.
+    private static readonly HashSet<string> Approve = ["approve", "approved", "approve it", "i approve"];
+    private static readonly HashSet<string> Deny = ["deny", "denied", "deny it", "no", "nope", "don't", "cancel", "never mind", "nevermind", "no thanks", "forget it", "leave it"];
+
+    public static bool IsApprove(string text) => IsYes(text) || Approve.Contains(Simplify(text));
+
+    public static bool IsDeny(string text) => Deny.Contains(Simplify(text));
 }
