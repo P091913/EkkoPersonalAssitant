@@ -173,13 +173,3 @@ Each record states the choice, the options considered, why this one, and what wo
 - [x] **`lock_pc` skips confirmation.** It's low risk.
 - [x] **Server-ops allowlists:** restart is limited to Jellyfin. Folders Echo may clear are still undecided, so clear\_cache\_dir stays disabled until there's a list.
 
-**Build order**
-
-1. Stand up the Brain service skeleton: the normalized request, conversation state, and JSONL trace.
-2. Add the fast-path table for existing commands (Discord, volume, Steam).
-3. Add the router with a JSON schema and an eval file of 30 to 50 utterances.
-4. Migrate the existing domains one at a time, desktop first, then media with structured `play_media`.
-5. Add the risk-class gates and confirm flow, then budget and calendar writes.
-6. Build the server-ops agent loop on the Claude API, with approvals and saved runs.
-7. Connect the remaining channels (Telegram, phone app, glasses) to the same API.
-
