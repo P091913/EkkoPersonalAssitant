@@ -9,7 +9,9 @@ services:
     container_name: ekko-brain
     restart: unless-stopped
     ports:
-      - "5060:8080"            # POST /message on http://<this PC>:5060
+      # POST /message on http://<this PC>:5065. Not 5060: that's SIP, on fetch's blocked-port list, so browsers and
+      # Node refuse to connect to it at all ("bad port").
+      - "5065:8080"
     # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Key (callers -> Brain),
     # PcService__ApiKey (Brain -> PC agent; Ekko.PcAgent/install.ps1 reads the same line), TvRemote__ApiKey
     # (Brain -> tvremote; same value as tvremote's own Api__Key). PcAgent_DeckKey is also in .env for install.ps1;
