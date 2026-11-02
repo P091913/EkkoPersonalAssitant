@@ -1,4 +1,3 @@
-# EkkoPersonalAssitant
 # Echo Architecture Spec
 
 Nov 2, 2026 · @Jarrett Plate
