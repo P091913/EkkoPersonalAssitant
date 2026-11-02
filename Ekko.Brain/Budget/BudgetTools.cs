@@ -63,8 +63,29 @@ public sealed class MarkBillPaid(BudgetService budget)
         };
     }
 
-    private static ChoiceOption Option(MarkRowPaidArgs row) =>
-        new(row.Label, BudgetResult.Json(row), Utterance.Simplify(row.Item).Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    private static ChoiceOption Option(MarkRowPaidArgs row) => new(row.Label, BudgetResult.Json(row), Keywords(row.Label));
+
+    /// <summary>
+    /// An option matches what Ekko read out: every word of its label ("streaming basic 12.47 on nov 2"), plus
+    /// the date as people say it ("november", "2nd"). So "November 2nd" or "12.47" picks the row. Words every option shares
+    /// ("streaming", "nov") don't count (PendingChoice.Pick).
+    /// </summary>
+    internal static IReadOnlyList<string> Keywords(string label)
+    {
+        var words = Utterance.Simplify(label).Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        var said = new List<string>();
+        for (var i = 1; i < words.Count; i++)
+            if (Months.TryGetValue(words[i - 1], out var month) && int.TryParse(words[i], out var day))
+                said.AddRange([month, Ordinal(day)]);
+        return [.. words, .. said];
+    }
+
+    private static readonly Dictionary<string, string> Months = Enumerable.Range(0, 12).ToDictionary(
+        m => BudgetResult.En.DateTimeFormat.AbbreviatedMonthNames[m].ToLowerInvariant(),
+        m => BudgetResult.En.DateTimeFormat.MonthNames[m].ToLowerInvariant());
+
+    private static string Ordinal(int day) =>
+        day + (day % 100 is 11 or 12 or 13 ? "th" : (day % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
 }
 
 /// <summary>Checks off the row the user confirmed. Code-only: the model never sees it, so it can't invent a row number.</summary>
@@ -101,7 +122,7 @@ public sealed class AddExpense(BudgetService budget)
 
 internal static class BudgetResult
 {
-    private static readonly CultureInfo En = CultureInfo.GetCultureInfo("en-US");
+    public static readonly CultureInfo En = CultureInfo.GetCultureInfo("en-US");
 
     /// <summary>The budget service already words every outcome.</summary>
     public static ToolResult From(BudgetAnswer answer) =>

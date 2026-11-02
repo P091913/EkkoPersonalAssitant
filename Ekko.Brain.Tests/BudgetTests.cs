@@ -99,6 +99,34 @@ public class BudgetTests
         Assert.Single(_budget.Requests);
     }
 
+    /// <summary>Three rows with one name, read out by amount and date, like the deck's "which one" on Nov 2.</summary>
+    private const string Streaming = """
+        {"status":"ambiguous","message":"Which one: Streaming (Basic) ($12.47 on Nov 2), Streaming (Kids) ($3.49 on Nov 22) or Streaming (Sports) ($5.49 on Nov 23)?",
+         "candidates":[{"tab":"November","row":10,"item":"Streaming (Basic)","amount":-12.47,"label":"Streaming (Basic) ($12.47 on Nov 2)"},
+                       {"tab":"November","row":36,"item":"Streaming (Kids)","amount":-3.49,"label":"Streaming (Kids) ($3.49 on Nov 22)"},
+                       {"tab":"November","row":37,"item":"Streaming (Sports)","amount":-5.49,"label":"Streaming (Sports) ($5.49 on Nov 23)"}]}
+        """;
+
+    [Theory]
+    [InlineData("November 2", 0)]          // the date it was read out with, not "the second one"
+    [InlineData("november 2nd", 0)]
+    [InlineData("the one on the 22nd", 1)]
+    [InlineData("12.47", 0)]               // the amount
+    [InlineData("the $3.49 one", 1)]
+    [InlineData("kids", 1)]
+    [InlineData("2", 0)]                   // a day that was read out ("Nov 2") wins over "the second one"
+    [InlineData("3", 2)]                   // no row on the 3rd: a number on its own is a position
+    [InlineData("number 3", 2)]
+    [InlineData("the second one", 1)]
+    [InlineData("November 3", null)]       // no row on Nov 3: not "the third one"
+    [InlineData("streaming", null)]        // names them all
+    public async Task A_which_one_answer_matches_what_was_read_out(string answer, int? expected)
+    {
+        _answers.Enqueue(Streaming);
+        var choice = Assert.IsType<PendingChoice>((await Run("mark_bill_paid", """{"item":"streaming"}""")).Next);
+        Assert.Equal(expected is int i ? choice.Options[i] : null, choice.Pick(answer));
+    }
+
     [Fact]
     public async Task No_matching_bill_is_a_failure_in_the_services_words()
     {
