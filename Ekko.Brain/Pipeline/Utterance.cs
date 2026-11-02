@@ -13,10 +13,12 @@ public static class Utterance
     private static readonly HashSet<string> No =
         ["no", "nope", "cancel", "never mind", "nevermind", "don't", "no thanks", "stop", "forget it"];
 
-    /// <summary>"Hey Ekko, can you mute my Discord, please?" -> "mute discord".</summary>
+    /// <summary>"Hey Ekko, can you mute my Discord, please?" -> "mute discord". "$3.49" stays one word, "3.49".</summary>
     public static string Simplify(string text)
     {
-        var chars = text.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) || c == '\'' ? c : ' ').ToArray();
+        var lower = text.ToLowerInvariant();
+        bool Decimal(int i) => lower[i] == '.' && i > 0 && i < lower.Length - 1 && char.IsAsciiDigit(lower[i - 1]) && char.IsAsciiDigit(lower[i + 1]);
+        var chars = lower.Select((c, i) => char.IsLetterOrDigit(c) || c == '\'' || Decimal(i) ? c : ' ').ToArray();
         return string.Join(' ', new string(chars).Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => !Filler.Contains(w)));
     }
 
