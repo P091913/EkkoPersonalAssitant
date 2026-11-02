@@ -90,22 +90,30 @@ public static partial class Ledger
     }
 
     /// <summary>
-    /// The unchecked rows "water" or "verizon bill" means: every word the user said starts a word of the row's item.
+    /// The unchecked rows a request means. By name when the words name something: every word said starts a word of the
+    /// row's item ("water", "verizon bill"); an amount alongside is then what it really came to, not part of the lookup.
+    /// By amount when they don't ("the 12.47 one", "an expense, $12.47"): rows planned at exactly that much.
     /// Rows with the same name collapse to the one dated nearest today (the four "Groceries" rows mean the next one), and a
     /// row named exactly as said wins outright ("water" over "Water softener"). More than one left means ask.
     /// </summary>
-    public static List<Row> FindUnchecked(Month month, string said, DateOnly today)
+    public static List<Row> FindUnchecked(Month month, string said, DateOnly today, decimal? amount = null)
     {
         var words = Key(said);
-        if (words.Count == 0)
+        if (words.Count == 0 && amount is null)
             return [];
+        Func<Row, bool> fits = words.Count > 0
+            ? r => words.All(w => Words(r.Item).Any(x => x.StartsWith(w, StringComparison.Ordinal)))
+            : r => Math.Abs(r.Amount!.Value) == amount;
         var matches = month.Rows
-            .Where(r => !r.IsStart && !r.Complete && r.Amount is not null and not 0m && words.All(w => Words(r.Item).Any(x => x.StartsWith(w, StringComparison.Ordinal))))
-            .GroupBy(r => string.Join(' ', Key(r.Item))) // "Groceries - shop 3" and "- shop 4" are one name: numbers are too short to count
+            .Where(r => !r.IsStart && !r.Complete && r.Amount is not null and not 0m && fits(r))
+            .GroupBy(r => string.Join(' ', Key(r.Item))) // "Groceries - shop 3" and "- shop 4" are one name: numbers don't count
             .Select(g => g.MinBy(r => r.Date is { } d ? Math.Abs(d.DayNumber - today.DayNumber) : 99)!)
             .ToList();
-        return matches.Where(r => Key(r.Item).SequenceEqual(words)).ToList() is [var exact] ? [exact] : matches;
+        return words.Count > 0 && matches.Where(r => Key(r.Item).SequenceEqual(words)).ToList() is [var exact] ? [exact] : matches;
     }
+
+    /// <summary>Do these words name a row, or only point at one ("the expense", "the 12.47 one")?</summary>
+    public static bool Names(string? said) => Key(said ?? "").Count > 0;
 
     /// <summary>"Water ($58 on Nov 15)": how a row is read back in a question.</summary>
     public static string Label(Row row) => $"{row.Item} ({Money(Math.Abs(row.Amount ?? 0))}{On(row.Date)})";
@@ -199,10 +207,15 @@ public static partial class Ledger
     private static List<string> Words(string text) =>
         WordPattern().Matches(text.ToLowerInvariant().Replace("'", "").Replace("’", "")).Select(m => m.Value).ToList();
 
-    /// <summary>The words that name something: "the water bill" -> water.</summary>
-    private static List<string> Key(string text) => Words(text).Where(w => w.Length >= 3 && !Filler.Contains(w)).ToList();
+    /// <summary>The words that name something: "the water bill" -> water. Numbers are amounts or row counters, not names.</summary>
+    private static List<string> Key(string text) =>
+        Words(text).Where(w => w.Length >= 3 && !Filler.Contains(w) && !w.All(char.IsAsciiDigit)).ToList();
 
-    private static readonly HashSet<string> Filler = ["the", "bill", "bills", "payment", "paid", "for", "and", "was", "has", "came", "went", "through"];
+    private static readonly HashSet<string> Filler =
+    [
+        "the", "bill", "bills", "payment", "paid", "for", "and", "was", "has", "came", "went", "through",
+        "expense", "expenses", "spreadsheet", "sheet", "one", // "mark an expense off my spreadsheet" names no row
+    ];
 
     private static JsonNode? Cell(List<JsonNode?> cells, int column) => column < cells.Count ? cells[column] : null;
 

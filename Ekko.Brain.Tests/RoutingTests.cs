@@ -49,6 +49,24 @@ public class RoutingTests
     }
 
     [Fact]
+    public async Task Chat_answers_with_words_and_runs_nothing()
+    {
+        var llm = new ScriptedLlm("qwen", """{"domain":"chat","confidence":"high"}""", """{"reply":"Not much, just keeping the house running."}""");
+
+        Assert.Equal("Not much, just keeping the house running.", await Send(llm, "what's up"));
+        Assert.Empty(_pc.Requests);
+        Assert.Equal(["request", "pending", "fast_path", "llm:route", "route", "llm:chat", "reply"], Steps());
+        // It's told what Ekko can do from the catalog: built domains only, so it never offers the calendar.
+        var prompt = llm.Requests[1].System;
+        Assert.Contains("the PC, shows and movies on the TV.", prompt);
+        Assert.DoesNotContain("calendar.", prompt);
+    }
+
+    [Fact]
+    public async Task Chat_that_cant_reach_a_model_still_answers_in_a_sentence() =>
+        Assert.Equal("Sorry, I can't chat right now.", await Send(new ScriptedLlm("qwen", """{"domain":"chat","confidence":"high"}""", null), "tell me a joke"));
+
+    [Fact]
     public async Task Low_confidence_asks_and_a_yes_runs_the_original_command()
     {
         Assert.Equal("Is that about the PC?", await Send(new ScriptedLlm("qwen", """{"domain":"desktop","confidence":"low"}"""), "make it louder in here"));

@@ -67,6 +67,24 @@ public class BudgetTests
     }
 
     [Fact]
+    public async Task An_amount_alone_looks_the_row_up_and_isnt_read_back_as_a_change()
+    {
+        _answers.Enqueue(Verizon);
+        var asked = await Run("mark_bill_paid", """{"amount":90}""");
+
+        Assert.Equal("""{"amount":90}""", _budget.Requests.Single().Body);
+        Assert.Equal("Check off Verizon ($90 on Nov 20). Go ahead?", asked.Say);
+    }
+
+    [Fact]
+    public async Task Neither_a_name_nor_an_amount_asks_without_calling_the_service()
+    {
+        var result = await Run("mark_bill_paid", "{}");
+        Assert.Equal("Which one? Say its name or its amount.", result.Say);
+        Assert.Empty(_budget.Requests);
+    }
+
+    [Fact]
     public async Task Several_bills_become_a_choice_and_the_pick_still_asks_before_writing()
     {
         _answers.Enqueue(Insurance);

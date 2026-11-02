@@ -10,15 +10,15 @@ namespace Ekko.Brain.Tests;
 
 public static class TestPipeline
 {
-    /// <summary>A pipeline whose route and extract steps both use <paramref name="llm"/> (default: unreachable) with no fallback.</summary>
+    /// <summary>A pipeline whose route, extract and chat steps all use <paramref name="llm"/> (default: unreachable) with no fallback.</summary>
     public static MessagePipeline Create(ConversationStore store, ToolCatalog catalog, TraceLog trace, ILlmClient? llm = null, ServerOpsAgent? agent = null)
     {
         var clients = new Dictionary<string, ILlmClient> { ["qwen"] = llm ?? new ScriptedLlm("qwen", [null]) };
-        var steps = new Dictionary<string, StepModels> { ["route"] = new() { Primary = "qwen" }, ["extract"] = new() { Primary = "qwen" } };
+        var steps = new[] { "route", "extract", "chat" }.ToDictionary(s => s, _ => new StepModels { Primary = "qwen" });
         var call = new StructuredCall(clients, steps, trace);
         agent ??= new ServerOpsAgent(new AgentModels(null, null), catalog, new RunStore(Path.Combine(Path.GetTempPath(), $"ekko-runs-{Guid.NewGuid():N}"), TimeProvider.System),
             new ServerOpsOptions(), trace, TimeProvider.System);
-        return new MessagePipeline(store, catalog, new Router(call), new DomainHandler(catalog, call), agent, trace);
+        return new MessagePipeline(store, catalog, new Router(call), new DomainHandler(catalog, call), agent, new Chat(call, catalog), trace);
     }
 
     public static ITool[] DesktopTools(FakeHttp pc)

@@ -18,6 +18,10 @@ public static class Requests
         : item.Any(char.IsControl) ? "item has control characters."
         : null;
 
+    public static string? Problem(FindRequest r) =>
+        string.IsNullOrWhiteSpace(r.Item) && r.Amount is null ? "item or amount is required."
+        : (string.IsNullOrWhiteSpace(r.Item) ? null : ItemProblem(r.Item)) ?? AmountProblem(r.Amount, required: false);
+
     public static string? Problem(PaidRequest r) =>
         string.IsNullOrWhiteSpace(r.Tab) || r.Tab.Contains('\'') ? "tab is required."
         : r.Row is < 2 or > 300 ? "row must be from 2 to 300."

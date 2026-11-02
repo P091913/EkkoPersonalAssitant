@@ -102,6 +102,7 @@ public static class EkkoServices
         services.AddScoped<ToolCatalog>();
         services.AddScoped<Router>();
         services.AddScoped<DomainHandler>();
+        services.AddScoped<Chat>();
         services.AddScoped<MessagePipeline>();
         return services;
     }
