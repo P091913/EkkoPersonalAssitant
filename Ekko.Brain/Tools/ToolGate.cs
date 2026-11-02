@@ -27,13 +27,19 @@ public static class ToolGate
         return risk switch
         {
             Risk.ReadOnly or Risk.Reversible => await tool.RunAsync(args, ct),
-            Risk.WriteConfirm or Risk.ExternalConfirm when !confirmed =>
-                ToolResult.Ask($"{tool.Describe(args)}. Go ahead?", new PendingConfirm(tool.Name, args.Clone())),
+            Risk.WriteConfirm or Risk.ExternalConfirm when !confirmed => Confirm(tool.Name, tool.Describe(args), args),
             Risk.WriteConfirm or Risk.ExternalConfirm => await tool.RunAsync(args, ct),
             // shortcut: Approve (push to phone, resume the saved run) arrives with server ops; until then it's refused.
             _ => ToolResult.Failed($"{tool.Name} needs approval from your phone, which isn't built yet."),
         };
     }
+
+    /// <summary>
+    /// The one way to ask "go ahead?". The gate asks it for confirm-class tools; a lookup asks it once it knows exactly
+    /// what a write will touch. Either way the yes runs <paramref name="tool"/> back through the gate.
+    /// </summary>
+    public static ToolResult Confirm(string tool, string describe, JsonElement args) =>
+        ToolResult.Ask($"{describe}. Go ahead?", new PendingConfirm(tool, args.Clone()));
 }
 
 /// <summary>Every tool, findable by name (fast path, resumed confirmations) or by domain (handlers).</summary>

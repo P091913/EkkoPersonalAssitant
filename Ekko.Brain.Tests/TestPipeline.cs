@@ -1,3 +1,4 @@
+using Ekko.Brain.Budget;
 using Ekko.Brain.Desktop;
 using Ekko.Brain.Llm;
 using Ekko.Brain.Media;
@@ -23,6 +24,12 @@ public static class TestPipeline
         var options = new PcServiceOptions { Apps = new() { ["steam"] = "steam" } };
         return [new OpenApp(service, options), new DiscordToggleMute(service), new DiscordToggleDeafen(service),
             new AdjustVolume(service), new MediaPlayPause(service), new LockPc(service)];
+    }
+
+    public static ITool[] BudgetTools(FakeHttp budget)
+    {
+        var service = new BudgetService(budget.Client("http://budget/"));
+        return [new GetBudgetStatus(service), new MarkBillPaid(service), new MarkRowPaid(service), new AddExpense(service)];
     }
 
     public static ITool[] MediaTools(FakeHttp tv)

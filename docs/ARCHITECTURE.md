@@ -78,9 +78,9 @@ There are 8 domains and about 28 tools, but the router only chooses among the do
 | Media | `play_media` | title; kind?, season?, episode? | Reversible | Media API (tvremote) |
 | Media | `media_control` | action: pause, resume, stop, next | Reversible | Media API (tvremote) |
 | TV | `tv_launch_jellyfin` | none | Reversible | tvshim |
-| Budget | `get_budget_remaining` | category? | Read-only | Server (Sheets) |
-| Budget | `list_categories` | none | Read-only | Server (Sheets) |
-| Budget | `log_expense` | amount, category, note | Write, confirm | Server (Sheets) |
+| Budget | `get_budget_status` | month? | Read-only | Budget service (Sheets) |
+| Budget | `mark_bill_paid` | item, amount? | Read-only lookup; the write is `mark_row_paid` (code-only, Write, confirm) | Budget service (Sheets) |
+| Budget | `add_expense` | item, amount, income?, planned? | Write, confirm | Budget service (Sheets) |
 | Food | `log_food` | item, quantity?, meal? | Reversible | Server |
 | Food | `get_food_log` | date | Read-only | Server |
 | Calendar | `get_events` | start, end | Read-only | Server |
@@ -200,6 +200,14 @@ Each record states the choice, the options considered, why this one, and what wo
 **DR-22: The PC agent is reachable on the tailnet, with one key per client (supersedes the localhost-only part of DR-9 and the single key of DR-11).** Options: bind to the LAN, bind to the Tailscale IP, or keep it on localhost and expose it with `tailscale serve`. It stays on localhost and `tailscale serve` exposes it on the tailnet, which gives HTTPS without opening a firewall port, and nothing outside the tailnet can reach it. Each client has its own key (`brain`, `deck`), so a client can be revoked on its own, and every action is logged with the client that asked for it. *Revisit if* clients need different permissions; then give each key its own allowlist of actions.
 
 **DR-23: Clients call each service directly; the Brain is one client, not a hub.** Options: every front end talks only to the Brain, which proxies everything, or each service is an API that owns its data, allowlist and key, and clients compose them. Routing everything through the Brain would rebuild the monolith the old app was. The Brain's job is turning language into actions; a deck button is an action you already chose, so it goes straight to the service that does it, and that service's own allowlist is the check. Read-only data that only one client needs (weather, GitHub, AdGuard) is fetched by that client from the source. A new service is warranted by a different runtime, rate of change or security boundary, or a second consumer, not by default. *Revisit if* clients duplicate the same multi-service logic; then that logic deserves a service of its own.
+
+*DR-24 to DR-26 were decided while building the budget domain (Nov 2, 2026).*
+
+**DR-24: Budget tools fit the real sheet: month tabs with a running balance, not category budgets (supersedes the budget rows this spec started with).** The expenses sheet has one tab per month ("November"). Its columns are Date, Item, Amount (negative is money out), a Balance formula chain (`=D5+C6`) and a Complete checkbox, with planned bills and paychecks listed ahead and ticked off. There are no categories to read, so `get_budget_remaining(category)` and `list_categories` had nothing to stand on. The tools are now `get_budget_status(month?)`, `mark_bill_paid(item, amount?)` and `add_expense(item, amount, income?, planned?)`. New rows are dated by the server clock, in the house's time zone. *Revisit if* the sheet gains categories, or past-dated entries are needed.
+
+**DR-25: When code resolves what a write will touch, the model picks a lookup and the confirmation reads back the resolved target.** Options: make `mark_bill_paid` itself confirm-class and read back the model's words ("mark water paid?"), or split it. A model-level confirmation reads back a guess; the row it lands on is decided later, in code. So `mark_bill_paid` is a read-only lookup. The budget service matches the words to rows: 0, 1 or several. On one row, Ekko asks "Check off Water ($58 on Nov 15)?" with `ToolGate.Confirm`, the same wording and path the gate uses. On several, the user picks first and then confirms. The write is `mark_row_paid`, a code-only Write-confirm tool, so the gate still holds it until a yes, and the model can never supply a row number. *Revisit if* the extra question after a pick annoys more than it protects.
+
+**DR-26: The budget service owns the sheet and guards it like user data.** It is the only holder of the Google service account key, which is mounted as a compose secret. Its container gets only its own variables from `.env`, not the whole file. It checks every request at the edge: a real month name, item length and characters, an amount up to cents and at most 100,000. Item text is written as literal text (a leading apostrophe), so it can never become a formula. Writes run one at a time, and a row number from an earlier read is checked against the item before ticking ("the sheet changed, ask me again"). A new row keeps the user's Balance chain: it is inserted in date order, inside the summary's ranges, and the row it pushed down is re-chained to it. *Revisit if* a second writer (bank alerts, the deck) needs a queue instead of a lock.
 
 ## Resolved questions
 
