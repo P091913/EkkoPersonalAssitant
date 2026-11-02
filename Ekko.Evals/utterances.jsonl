@@ -46,11 +46,24 @@
 {"text": "hold on, pause the show for a sec", "domain": "media", "tool": "media_control", "args": {"action": "pause"}}
 {"text": "ok you can start the show back up", "domain": "media", "tool": "media_control", "args": {"action": "resume"}}
 
+// budget - the expenses sheet. Item words like "bill" are dropped by the budget service, so both spellings behave the same.
+{"text": "what bills do I still have to pay", "domain": "budget", "tool": "get_budget_status", "args": {}}
+{"text": "how is the budget looking this month", "domain": "budget", "tool": "get_budget_status", "args": {}}
+{"text": "how did october go money wise", "domain": "budget", "tool": "get_budget_status", "args": {"month": "october"}}
+{"text": "how much do I have left for groceries", "domain": "budget", "tool": "get_budget_status", "args": {}}
+{"text": "did my paycheck come in yet", "domain": "budget", "tool": "get_budget_status", "args": {}}
+{"text": "I paid the water bill", "domain": "budget", "tool": "mark_bill_paid", "args": [{"item": "water"}, {"item": "water bill"}]}
+{"text": "verizon is paid, it was 220", "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "verizon", "amount": 220}}
+{"text": "my paycheck came in", "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "paycheck"}}
+{"text": "ugh the car insurance finally went through, it was like 190", "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "car insurance", "amount": 190}}
+{"text": "unexpected expense, 380 for a new tire", "domain": "budget", "tool": "add_expense", "args": [{"item": "new tire", "amount": 380}, {"item": "tire", "amount": 380}]}
+{"text": "I spent 12 bucks on lunch", "domain": "budget", "tool": "add_expense", "args": {"item": "lunch", "amount": 12}}
+{"text": "I got 50 back from a refund", "domain": "budget", "tool": "add_expense", "args": {"item": "refund", "amount": 50, "income": true}}
+{"text": "log 45.99 for the vet, that one was planned", "domain": "budget", "tool": "add_expense", "args": [{"item": "vet", "amount": 45.99, "planned": true}, {"item": "the vet", "amount": 45.99, "planned": true}]}
+
 // domains not built yet: routing only
 {"text": "turn on the tv", "domain": "tv"}
 {"text": "switch the tv off", "domain": "tv"}
-{"text": "how much do I have left for groceries", "domain": "budget"}
-{"text": "I spent 12 bucks on lunch", "domain": "budget"}
 {"text": "log two eggs and toast for breakfast", "domain": "food"}
 {"text": "what's on my calendar tomorrow", "domain": "calendar"}
 {"text": "am I free friday afternoon", "domain": "calendar"}

@@ -37,7 +37,7 @@ public sealed class FakeHttp : HttpMessageHandler
     {
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
         var headers = request.Headers.ToDictionary(h => h.Key, h => string.Join(",", h.Value), StringComparer.OrdinalIgnoreCase);
-        Requests.Add((request.Method, request.RequestUri!.AbsolutePath, body, headers));
+        Requests.Add((request.Method, request.RequestUri!.PathAndQuery, body, headers));
         return Respond(request);
     }
 }

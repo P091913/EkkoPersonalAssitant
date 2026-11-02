@@ -1,3 +1,4 @@
+using Ekko.Brain.Budget;
 using Ekko.Brain.Desktop;
 using Ekko.Brain.Llm;
 using Ekko.Brain.Media;
@@ -59,6 +60,19 @@ public static class EkkoServices
         services.AddScoped<ITool, PlayMedia>();
         services.AddScoped<ITool, PlayMediaItem>();
         services.AddScoped<ITool, MediaControl>();
+
+        var budget = config.GetSection("Budget").Get<BudgetOptions>() ?? throw new InvalidOperationException("Budget config is missing.");
+        services.AddHttpClient<BudgetService>(c =>
+        {
+            c.BaseAddress = new Uri(budget.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = TimeSpan.FromSeconds(budget.TimeoutSeconds);
+            if (!string.IsNullOrEmpty(budget.ApiKey))
+                c.DefaultRequestHeaders.Add(ApiKey.Header, budget.ApiKey);
+        });
+        services.AddScoped<ITool, GetBudgetStatus>();
+        services.AddScoped<ITool, MarkBillPaid>();
+        services.AddScoped<ITool, MarkRowPaid>();
+        services.AddScoped<ITool, AddExpense>();
 
         services.AddScoped<ToolCatalog>();
         services.AddScoped<Router>();

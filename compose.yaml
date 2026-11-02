@@ -21,5 +21,28 @@ services:
       Llm__Clients__qwen__BaseUrl: http://host.docker.internal:11434/v1/
       PcService__BaseUrl: http://host.docker.internal:5070/  # Ekko.PcAgent, native on Windows
       TvRemote__BaseUrl: http://host.docker.internal:5055/   # tvremote container, via its published port
+      Budget__BaseUrl: http://host.docker.internal:5080/     # the budget service below, via its published port
     volumes:
       - ./data:/app/data       # trace.jsonl, readable from the host
+
+  budget:
+    build:
+      context: .
+      dockerfile: Ekko.Budget/Dockerfile
+    image: ekko-budget
+    container_name: ekko-budget
+    restart: unless-stopped
+    ports:
+      - "5080:8080"            # /budget/* on http://<this PC>:5080
+    # Only what this service needs, picked out of .env: it never sees the Anthropic key or other services' keys.
+    environment:
+      Api__Keys__brain: ${Budget__ApiKey:?set Budget__ApiKey in .env}
+      Sheet__SpreadsheetId: ${Budget_SpreadsheetId:?set Budget_SpreadsheetId in .env}
+      Sheet__KeyFile: /run/secrets/google-sheets
+      TZ: America/Chicago      # a new row is dated by the house's day, not UTC's
+    secrets:
+      - google-sheets
+
+secrets:
+  google-sheets:
+    file: ${GOOGLE_SHEETS_KEY_FILE:?set GOOGLE_SHEETS_KEY_FILE in .env to the service account's JSON key}

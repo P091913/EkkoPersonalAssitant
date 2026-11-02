@@ -22,7 +22,7 @@ public sealed class Router(StructuredCall llm)
         desktop: the PC. Opening apps (Steam, Discord, browser), Discord mute or deafen, PC volume, locking the PC, play/pause of music or video on the PC.
         media: shows and movies on the TV. Playing a title, and pausing, resuming or stopping what the TV is playing. A bare "pause", "resume" or "stop" means the TV.
         tv: the TV itself. Turning it on or off, opening Jellyfin on it.
-        budget: money, spending, budget categories, logging an expense.
+        budget: money and the expenses sheet. Bills, paychecks, spending, the balance, what's left this month, logging an expense.
         food: logging what was eaten, or asking about it.
         calendar: events, schedule, meetings, free time.
         server_ops: the home server. Containers, disk space, logs, restarts.

@@ -164,5 +164,11 @@ sealed class Outcome(Case c)
         return result;
     }
 
-    private static string Value(JsonElement v) => v.ValueKind == JsonValueKind.String ? Utterance.Simplify(v.GetString()!) : v.GetRawText();
+    // Numbers by value: 220, 220.0 and 220.00 are the same answer.
+    private static string Value(JsonElement v) => v.ValueKind switch
+    {
+        JsonValueKind.String => Utterance.Simplify(v.GetString()!),
+        JsonValueKind.Number => v.GetDouble().ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        _ => v.GetRawText(),
+    };
 }
