@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+.env
+data/
+.idea/
+Ekko.Brain.Tests/
+Ekko.Evals/

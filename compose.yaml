@@ -1,0 +1,23 @@
+name: ekko
+
+services:
+  brain:
+    build:
+      context: .
+      dockerfile: Ekko.Brain/Dockerfile
+    image: ekko-brain
+    container_name: ekko-brain
+    restart: unless-stopped
+    ports:
+      - "5060:8080"            # POST /message on http://<this PC>:5060
+    # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Key (callers -> Brain),
+    # PcService__ApiKey (Brain -> PC agent; Ekko.PcAgent/install.ps1 reads the same line).
+    env_file: .env
+    environment:
+      # Other services are reached through their published host ports, not shared Docker networks,
+      # so each one can move or be replaced without touching this file's neighbours.
+      Llm__Clients__qwen__BaseUrl: http://host.docker.internal:11434/v1/
+      PcService__BaseUrl: http://host.docker.internal:5070/  # Ekko.PcAgent, native on Windows
+      TvRemote__BaseUrl: http://host.docker.internal:5055/   # tvremote container, via its published port
+    volumes:
+      - ./data:/app/data       # trace.jsonl, readable from the host

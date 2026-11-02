@@ -1,0 +1,60 @@
+// One utterance per line: expected domain, and for built domains the expected tool and args.
+// "none" = the domain is right but no tool does that. Args compare after Utterance.Simplify; schema defaults fill gaps.
+// "args" may be a list when several answers behave identically (tvremote treats a season as implying series).
+// Every real failure in the trace should become a line here.
+
+// desktop - clean phrases (most hit the fast path)
+{"text": "mute discord", "domain": "desktop", "tool": "discord_toggle_mute", "args": {}}
+{"text": "volume up", "domain": "desktop", "tool": "adjust_volume", "args": {"direction": "up"}}
+{"text": "open steam", "domain": "desktop", "tool": "open_app", "args": {"app": "steam"}}
+{"text": "lock my computer", "domain": "desktop", "tool": "lock_pc", "args": {}}
+{"text": "pause the music", "domain": "desktop", "tool": "media_play_pause", "args": {}}
+
+// desktop - messy phrasing
+{"text": "hey ekko can you unmute me on discord", "domain": "desktop", "tool": "discord_toggle_mute", "args": {}}
+{"text": "deafen me real quick", "domain": "desktop", "tool": "discord_toggle_deafen", "args": {}}
+{"text": "I can't hear myself think, deafen discord", "domain": "desktop", "tool": "discord_toggle_deafen", "args": {}}
+{"text": "it's a little too loud in here", "domain": "desktop", "tool": "adjust_volume", "args": {"direction": "down"}}
+{"text": "turn the volume up three notches", "domain": "desktop", "tool": "adjust_volume", "args": {"direction": "up", "steps": 3}}
+{"text": "drop the volume by two", "domain": "desktop", "tool": "adjust_volume", "args": {"direction": "down", "steps": 2}}
+{"text": "can you fire up steam for me", "domain": "desktop", "tool": "open_app", "args": {"app": "steam"}}
+{"text": "launch discord", "domain": "desktop", "tool": "open_app", "args": {"app": "discord"}}
+{"text": "pull up the browser", "domain": "desktop", "tool": "open_app", "args": {"app": "browser"}}
+{"text": "I'm heading out, lock the pc", "domain": "desktop", "tool": "lock_pc", "args": {}}
+{"text": "pause spotify on my computer", "domain": "desktop", "tool": "media_play_pause", "args": {}}
+
+// desktop - asks for something no tool does: must be "none", not the closest tool
+{"text": "close discord", "domain": "desktop", "tool": "none"}
+{"text": "set the volume to 40 percent", "domain": "desktop", "tool": "none"}
+{"text": "what window do I have open", "domain": "desktop", "tool": "none"}
+
+// media - titles, including the spec's example
+{"text": "play Scooby-Doo", "domain": "media", "tool": "play_media", "args": {"title": "Scooby-Doo"}}
+{"text": "I'm really looking forward to Scooby-Doo right now", "domain": "media", "tool": "play_media", "args": {"title": "Scooby-Doo"}}
+{"text": "I wanna watch Scooby-Doo", "domain": "media", "tool": "play_media", "args": {"title": "Scooby-Doo"}}
+{"text": "put on the office", "domain": "media", "tool": "play_media", "args": {"title": "The Office"}}
+{"text": "play season 2 episode 5 of the office", "domain": "media", "tool": "play_media", "args": [{"title": "The Office", "season": 2, "episode": 5}, {"title": "The Office", "kind": "series", "season": 2, "episode": 5}]}
+{"text": "start season three of breaking bad", "domain": "media", "tool": "play_media", "args": [{"title": "Breaking Bad", "season": 3}, {"title": "Breaking Bad", "kind": "series", "season": 3}]}
+{"text": "let's keep going with breaking bad", "domain": "media", "tool": "play_media", "args": {"title": "Breaking Bad"}}
+{"text": "play the movie inception", "domain": "media", "tool": "play_media", "args": {"title": "Inception", "kind": "movie"}}
+{"text": "put on the scooby doo show", "domain": "media", "tool": "play_media", "args": {"title": "Scooby-Doo", "kind": "series"}}
+{"text": "honestly I could go for some spider-man tonight", "domain": "media", "tool": "play_media", "args": {"title": "Spider-Man"}}
+
+// media - playback (bare words hit the fast path)
+{"text": "pause", "domain": "media", "tool": "media_control", "args": {"action": "pause"}}
+{"text": "stop the movie", "domain": "media", "tool": "media_control", "args": {"action": "stop"}}
+{"text": "hold on, pause the show for a sec", "domain": "media", "tool": "media_control", "args": {"action": "pause"}}
+{"text": "ok you can start the show back up", "domain": "media", "tool": "media_control", "args": {"action": "resume"}}
+
+// domains not built yet: routing only
+{"text": "turn on the tv", "domain": "tv"}
+{"text": "switch the tv off", "domain": "tv"}
+{"text": "how much do I have left for groceries", "domain": "budget"}
+{"text": "I spent 12 bucks on lunch", "domain": "budget"}
+{"text": "log two eggs and toast for breakfast", "domain": "food"}
+{"text": "what's on my calendar tomorrow", "domain": "calendar"}
+{"text": "am I free friday afternoon", "domain": "calendar"}
+{"text": "how much disk space is left on the server", "domain": "server_ops"}
+{"text": "restart jellyfin", "domain": "server_ops"}
+{"text": "what's the capital of france", "domain": "chat"}
+{"text": "tell me a joke", "domain": "chat"}
