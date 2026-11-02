@@ -53,6 +53,8 @@ public static class EkkoServices
         {
             c.BaseAddress = new Uri(tv.BaseUrl.TrimEnd('/') + "/");
             c.Timeout = TimeSpan.FromSeconds(tv.TimeoutSeconds);
+            if (!string.IsNullOrEmpty(tv.ApiKey))
+                c.DefaultRequestHeaders.Add(ApiKey.Header, tv.ApiKey);
         });
         services.AddScoped<ITool, PlayMedia>();
         services.AddScoped<ITool, PlayMediaItem>();

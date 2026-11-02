@@ -11,7 +11,9 @@ services:
     ports:
       - "5060:8080"            # POST /message on http://<this PC>:5060
     # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Key (callers -> Brain),
-    # PcService__ApiKey (Brain -> PC agent; Ekko.PcAgent/install.ps1 reads the same line).
+    # PcService__ApiKey (Brain -> PC agent; Ekko.PcAgent/install.ps1 reads the same line), TvRemote__ApiKey
+    # (Brain -> tvremote; same value as tvremote's own Api__Key). PcAgent_DeckKey is also in .env for install.ps1;
+    # the Brain ignores it.
     env_file: .env
     environment:
       # Other services are reached through their published host ports, not shared Docker networks,

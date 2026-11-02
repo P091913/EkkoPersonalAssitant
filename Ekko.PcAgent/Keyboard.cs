@@ -13,6 +13,7 @@ public static class Keyboard
         ["left"] = 0x25, ["up"] = 0x26, ["right"] = 0x27, ["down"] = 0x28, ["insert"] = 0x2D, ["delete"] = 0x2E,
         ["volume_mute"] = 0xAD, ["volume_down"] = 0xAE, ["volume_up"] = 0xAF,
         ["next"] = 0xB0, ["previous"] = 0xB1, ["play_pause"] = 0xB3,
+        ["."] = 0xBE, // win+. opens the emoji picker
     };
 
     // Navigation keys must be flagged extended, or Windows delivers the numpad key instead (numpad 9 for page up).

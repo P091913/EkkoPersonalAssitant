@@ -18,14 +18,19 @@ if ($Remove) {
     return
 }
 
-# The shared secret lives in the solution's .env, next to the Brain's copy of it.
+# One key per client, from the solution's .env: the Brain's (shared with its container) and the deck's.
 $envFile = Join-Path (Split-Path $PSScriptRoot -Parent) '.env'
-$key = (Get-Content $envFile | Where-Object { $_ -like 'PcService__ApiKey=*' } | Select-Object -First 1) -replace '^PcService__ApiKey=', ''
-if (-not $key) { throw "PcService__ApiKey is missing from $envFile" }
+function EnvValue($name) { (Get-Content $envFile | Where-Object { $_ -like "$name=*" } | Select-Object -First 1) -replace "^$name=", '' }
+$keys = @{}
+foreach ($client in @{ brain = 'PcService__ApiKey'; deck = 'PcAgent_DeckKey' }.GetEnumerator()) {
+    if ($value = EnvValue $client.Value) { $keys[$client.Key] = $value }
+}
+if (-not $keys.brain) { throw "PcService__ApiKey is missing from $envFile" }
 
 dotnet publish (Join-Path $PSScriptRoot 'Ekko.PcAgent.csproj') -c Release -o $Home_ --nologo -v q
 if ($LASTEXITCODE) { throw 'Publish failed; the old copy was left in place but is stopped.' }
-@{ Api = @{ Key = $key } } | ConvertTo-Json | Set-Content (Join-Path $Home_ 'appsettings.Production.json')
+@{ Api = @{ Keys = $keys } } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $Home_ 'appsettings.Production.json')
+Write-Host "Client keys: $($keys.Keys -join ', ')"
 
 Set-Content $Runner -Encoding ascii -Value @(
     '@echo off',

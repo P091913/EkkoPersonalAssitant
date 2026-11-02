@@ -10,6 +10,9 @@ public sealed class TvRemoteOptions
 
     /// <summary>Long on purpose: playing can wake the TV and wait for Jellyfin to connect (tvremote allows ~95 s).</summary>
     public int TimeoutSeconds { get; init; } = 120;
+
+    /// <summary>Sent as X-Api-Key; tvremote checks it when its own Api__Key is set.</summary>
+    public string? ApiKey { get; init; }
 }
 
 public sealed record MediaCandidate(string Id, string Name, string Type, int? ProductionYear, string Label);
