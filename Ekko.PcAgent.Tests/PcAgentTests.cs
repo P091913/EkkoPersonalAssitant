@@ -12,8 +12,24 @@ public class PcAgentTests
     [InlineData("f13", new ushort[] { 0x7C })]
     [InlineData("volume_up", new ushort[] { 0xAF })]
     [InlineData("7", new ushort[] { 0x37 })]
+    [InlineData("win+.", new ushort[] { 0x5B, 0xBE })]
     public void Key_names_map_to_virtual_key_codes(string combo, ushort[] expected) =>
         Assert.Equal(expected, Keyboard.Parse(combo));
+
+    private static readonly Dictionary<string, string> Keys = new() { ["brain"] = "brain-key-123", ["deck"] = "deck-key-456" };
+
+    [Theory]
+    [InlineData("brain-key-123", "brain")]
+    [InlineData("deck-key-456", "deck")]
+    [InlineData("deck-key-45", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void Each_key_identifies_its_client(string? supplied, string? client) =>
+        Assert.Equal(client, ApiKeys.ClientFor(Keys, supplied));
+
+    [Fact]
+    public void An_empty_configured_key_never_matches() =>
+        Assert.Null(ApiKeys.ClientFor(new Dictionary<string, string> { ["deck"] = "" }, "anything"));
 
     [Theory]
     [InlineData("pgup")]
