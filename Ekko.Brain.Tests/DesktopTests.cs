@@ -124,5 +124,6 @@ public class DesktopTests
         Assert.True(lines[2].GetProperty("hit").GetBoolean());
         Assert.Equal("up", lines[3].GetProperty("args").GetProperty("direction").GetString());
         Assert.True(lines[3].GetProperty("ok").GetBoolean());
+        Assert.Equal("desktop", lines[3].GetProperty("domain").GetString()); // fast-path hits name no domain anywhere else
     }
 }

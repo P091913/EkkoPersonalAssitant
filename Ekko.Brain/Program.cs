@@ -41,4 +41,7 @@ app.MapPost("/runs/{id}/approve", async (string id, MessagePipeline pipeline, Ca
 app.MapPost("/runs/{id}/deny", async (string id, MessagePipeline pipeline, CancellationToken ct) =>
     Results.Ok(await pipeline.ResolveRunAsync(id, approved: false, "api", ct)));
 
+// Recent steps for live views (the deck's Ekko page), trimmed by TraceView. Poll with the last seq seen; start over when boot changes.
+app.MapGet("/trace", (long? after, TraceLog trace) => Results.Ok(new { trace.Boot, Events = trace.Since(after ?? 0) }));
+
 app.Run();

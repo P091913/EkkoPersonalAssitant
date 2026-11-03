@@ -126,7 +126,7 @@ public sealed class MessagePipeline(ConversationStore conversations, Conversatio
     {
         var started = Stopwatch.GetTimestamp();
         var result = await ToolGate.ExecuteAsync(tool, args, confirmed, ct);
-        trace.Write(t with { Step = "tool", Tool = tool.Name, Args = args, Ok = result.Ok, Result = result.Say, LatencyMs = Ms(started) });
+        trace.Write(t with { Step = "tool", Domain = Router.Name(tool.Domain), Tool = tool.Name, Args = args, Ok = result.Ok, Result = result.Say, LatencyMs = Ms(started) });
         if (result.Next is not null)
             conversations.Set(request.ConversationId, result.Next);
         return result.Say;
