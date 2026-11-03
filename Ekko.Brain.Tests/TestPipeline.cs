@@ -10,15 +10,22 @@ namespace Ekko.Brain.Tests;
 
 public static class TestPipeline
 {
-    /// <summary>A pipeline whose route, extract and chat steps all use <paramref name="llm"/> (default: unreachable) with no fallback.</summary>
-    public static MessagePipeline Create(ConversationStore store, ToolCatalog catalog, TraceLog trace, ILlmClient? llm = null, ServerOpsAgent? agent = null)
+    /// <summary>
+    /// A pipeline whose route, extract and chat steps all use <paramref name="llm"/> (default: unreachable) with no fallback,
+    /// and <paramref name="deep"/> in a deep session if given. Pass the same <paramref name="memory"/> to carry turns across pipelines.
+    /// </summary>
+    public static MessagePipeline Create(ConversationStore store, ToolCatalog catalog, TraceLog trace, ILlmClient? llm = null, ServerOpsAgent? agent = null,
+        ConversationMemory? memory = null, ILlmClient? deep = null)
     {
         var clients = new Dictionary<string, ILlmClient> { ["qwen"] = llm ?? new ScriptedLlm("qwen", [null]) };
-        var steps = new[] { "route", "extract", "chat" }.ToDictionary(s => s, _ => new StepModels { Primary = "qwen" });
+        if (deep is not null)
+            clients["deep"] = deep;
+        var steps = new[] { "route", "extract", "chat" }.ToDictionary(s => s, _ => new StepModels { Primary = "qwen", Deep = deep is null ? null : "deep" });
         var call = new StructuredCall(clients, steps, trace);
         agent ??= new ServerOpsAgent(new AgentModels(null, null), catalog, new RunStore(Path.Combine(Path.GetTempPath(), $"ekko-runs-{Guid.NewGuid():N}"), TimeProvider.System),
             new ServerOpsOptions(), trace, TimeProvider.System);
-        return new MessagePipeline(store, catalog, new Router(call), new DomainHandler(catalog, call), agent, new Chat(call, catalog), trace);
+        memory ??= new ConversationMemory(TimeProvider.System, new ConversationOptions());
+        return new MessagePipeline(store, memory, catalog, new Router(call), new DomainHandler(catalog, call), agent, new Chat(call, catalog), trace);
     }
 
     public static ITool[] DesktopTools(FakeHttp pc)

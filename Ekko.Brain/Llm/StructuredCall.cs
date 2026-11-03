@@ -16,11 +16,16 @@ public sealed class StructuredCall(IReadOnlyDictionary<string, ILlmClient> clien
     public static Func<JsonElement, (T? Value, string? Error)> Parse<T>() where T : class =>
         json => ToolJson.TryParse<T>(json, out var value, out var error) ? (value, null) : (null, error);
 
+    /// <param name="deep">A long session (DR-34): the step's Deep model goes first and its usual Primary becomes the fallback,
+    /// so Ekko still answers when Claude can't be reached. Without a Deep model, or its client (no API key), nothing changes.</param>
     public async Task<T?> AskAsync<T>(string step, LlmRequest request, Func<JsonElement, (T? Value, string? Error)> validate,
-        TraceEvent t, CancellationToken ct) where T : class
+        TraceEvent t, CancellationToken ct, bool deep = false) where T : class
     {
         var models = steps.GetValueOrDefault(step) ?? throw new InvalidOperationException($"No Llm:Steps:{step} in config.");
-        var primary = clients.GetValueOrDefault(models.Primary) ?? throw new InvalidOperationException($"Llm client '{models.Primary}' isn't available.");
+        var (primaryName, fallbackName) = deep && models.Deep is { } d && clients.ContainsKey(d) ? (d, models.Primary) : (models.Primary, models.Fallback);
+        var primary = clients.GetValueOrDefault(primaryName) ?? throw new InvalidOperationException($"Llm client '{primaryName}' isn't available.");
+        if (deep)
+            t = t with { Deep = true };
 
         var first = await TryAsync(step, primary, request, 1, validate, t, ct);
         if (first.Value is not null)
@@ -40,7 +45,7 @@ public sealed class StructuredCall(IReadOnlyDictionary<string, ILlmClient> clien
         }
 
         // The fallback gets the original request: a clean context, not Qwen's mistakes.
-        return models.Fallback is { } name && clients.GetValueOrDefault(name) is { } fallback
+        return fallbackName is { } name && clients.GetValueOrDefault(name) is { } fallback
             ? (await TryAsync(step, fallback, request, 3, validate, t, ct)).Value
             : null;
     }

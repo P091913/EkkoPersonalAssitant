@@ -32,8 +32,16 @@ public sealed class Router(StructuredCall llm)
         confidence is "low" only when two domains fit about equally well or the request is unclear; otherwise "high".
         """;
 
-    public Task<RouteDecision?> RouteAsync(string text, TraceEvent t, CancellationToken ct) =>
-        llm.AskAsync("route", new LlmRequest(Prompt, [new LlmMessage("user", text)], Schema), StructuredCall.Parse<RouteDecision>(), t, ct);
+    // Only with earlier turns, so a single message is routed with exactly the prompt the evals were tuned on.
+    private const string HistoryNote = """
+
+        Earlier turns only explain what the latest message refers to: "it was expected" or "12.47" right after a budget question is budget.
+        Route the latest message. A new command is routed on its own words, whatever came before.
+        """;
+
+    public Task<RouteDecision?> RouteAsync(string text, History history, TraceEvent t, CancellationToken ct) =>
+        llm.AskAsync("route", new LlmRequest(Prompt + (history.Turns.Count > 0 ? HistoryNote : ""), history.Messages(text), Schema),
+            StructuredCall.Parse<RouteDecision>(), t, ct, history.Deep);
 
     public static string Name(Domain domain) => JsonNamingPolicy.SnakeCaseLower.ConvertName(domain.ToString());
 

@@ -42,6 +42,9 @@ public sealed class StepModels
 {
     public string Primary { get; init; } = "";
     public string? Fallback { get; init; }
+
+    /// <summary>Used first in a deep session (DR-34), with <see cref="Primary"/> as its fallback. Unset: the step never switches.</summary>
+    public string? Deep { get; init; }
 }
 
 public sealed class LlmOptions

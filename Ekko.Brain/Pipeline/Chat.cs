@@ -15,12 +15,12 @@ public sealed class Chat(StructuredCall llm, ToolCatalog catalog)
 {
     private static readonly JsonNode Schema = ToolJson.SchemaFor<ChatReply>();
 
-    public async Task<string> ReplyAsync(string text, TraceEvent t, CancellationToken ct) =>
-        (await llm.AskAsync("chat", new LlmRequest(Prompt(), [new LlmMessage("user", text)], Schema), StructuredCall.Parse<ChatReply>(), t, ct))
+    public async Task<string> ReplyAsync(string text, History history, TraceEvent t, CancellationToken ct) =>
+        (await llm.AskAsync("chat", new LlmRequest(Prompt(history.Turns.Count > 0), history.Messages(text), Schema), StructuredCall.Parse<ChatReply>(), t, ct, history.Deep))
             ?.Reply.Trim() ?? "Sorry, I can't chat right now.";
 
     // Built from the catalog, so chat never offers a domain that has no tools yet.
-    private string Prompt() => $$"""
+    private string Prompt(bool withHistory) => $$"""
         You are Ekko, a home assistant, answering one message out loud.
         Reply in one to three short sentences of plain speech: no lists, markdown or emoji.
         You can talk: small talk, jokes, general knowledge, explaining things.
@@ -30,5 +30,9 @@ public sealed class Chat(StructuredCall llm, ToolCatalog catalog)
         If the message sounds like one of those commands, say you didn't catch it as a command and ask them to say it again plainly.
         If you don't know something, say so.
         Answer {"reply": "..."}.
-        """;
+        """ + (withHistory ? """
+
+        Earlier turns are this conversation so far: answer the latest message in that light. What Ekko did in those turns
+        was done by its commands; don't claim it as yours, and don't do anything new.
+        """ : "");
 }

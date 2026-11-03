@@ -66,6 +66,15 @@
 {"text": "check off the 12.47 one", "domain": "budget", "tool": "mark_bill_paid", "args": {"amount": 12.47}}
 {"text": "mark netflix as paid", "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "netflix"}}
 
+// follow-ups: "before" holds the earlier turns of the session (DR-33). Shaped on the deck's Nov 2 trace, made-up values.
+{"text": "that one was expected actually", "before": [{"user": "I spent 38 on gas", "ekko": "Add gas, $38 spent, marked unexpected. Go ahead?"}], "domain": "budget", "tool": "add_expense", "args": {"item": "gas", "amount": 38, "planned": true}}
+{"text": "mark the first one paid", "before": [{"user": "what bills do I still have", "ekko": "November: 3 bills left to pay, $82 in all: Water $58 on Nov 15, Streaming (Kids) $3.49 on Nov 22, Gym $20.51 on Nov 25. Ending balance $922."}], "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "water"}}
+{"text": "it's the 15.99 one", "before": [{"user": "mark netflix paid", "ekko": "I couldn't find an unchecked netflix on this month's or last month's tab."}], "domain": "budget", "tool": "mark_bill_paid", "args": {"amount": 15.99}}
+{"text": "actually put it back up", "before": [{"user": "volume down", "ekko": "Volume down."}], "domain": "desktop", "tool": "adjust_volume", "args": {"direction": "up"}}
+{"text": "can you fire up steam for me", "before": [{"user": "what bills do I still have", "ekko": "November: 2 bills left to pay, $78 in all: Water $58 on Nov 15, Phone $20 on Nov 20."}, {"user": "thanks", "ekko": "You're welcome."}], "domain": "desktop", "tool": "open_app", "args": {"app": "steam"}}
+{"text": "another one", "before": [{"user": "tell me a joke", "ekko": "Why did the scarecrow win an award? Because he was outstanding in his field!"}], "domain": "chat"}
+{"text": "what about its logs", "before": [{"user": "is jellyfin ok", "ekko": "Jellyfin is running and healthy, up 5 days with no restarts."}], "domain": "server_ops"}
+
 // routing only: domains with no extraction step (not built yet, server ops' agent loop, chat's reply)
 {"text": "turn on the tv", "domain": "tv"}
 {"text": "switch the tv off", "domain": "tv"}
