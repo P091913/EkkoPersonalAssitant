@@ -66,6 +66,22 @@
 {"text": "check off the 12.47 one", "domain": "budget", "tool": "mark_bill_paid", "args": {"amount": 12.47}}
 {"text": "mark netflix as paid", "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "netflix"}}
 
+// food - foods as words, the measure inside the food (DR-35). A plural and its singular are one food to the food service
+// (FoodWords.Key), so both spellings behave the same. A question about a food isn't a log: chat can answer it.
+{"text": "log two eggs and toast for breakfast", "domain": "food", "tool": "log_food", "args": [{"items": [{"food": "egg", "quantity": 2}, {"food": "toast"}]}, {"items": [{"food": "eggs", "quantity": 2}, {"food": "toast"}]}]}
+{"text": "I just had a big mac", "domain": "food", "tool": "log_food", "args": {"items": [{"food": "big mac"}]}}
+{"text": "had a burrito for lunch", "domain": "food", "tool": "log_food", "args": {"items": [{"food": "burrito"}]}}
+{"text": "I ate 200 grams of chicken", "domain": "food", "tool": "log_food", "args": [{"items": [{"food": "gram of chicken", "quantity": 200}]}, {"items": [{"food": "grams of chicken", "quantity": 200}]}]}
+{"text": "had two slices of pepperoni pizza", "domain": "food", "tool": "log_food", "args": [{"items": [{"food": "slice of pepperoni pizza", "quantity": 2}]}, {"items": [{"food": "slices of pepperoni pizza", "quantity": 2}]}]}
+// "half a" left in the food is moved to the quantity by log_food (LogFood.Entry), so these behave the same.
+{"text": "I had half a turkey sandwich", "domain": "food", "tool": "log_food", "args": [{"items": [{"food": "turkey sandwich", "quantity": 0.5}]}, {"items": [{"food": "half a turkey sandwich", "quantity": 0.5}]}, {"items": [{"food": "half a turkey sandwich"}]}]}
+{"text": "I had a 300 calorie protein bar", "domain": "food", "tool": "log_food", "args": {"items": [{"food": "protein bar", "calories": 300}]}}
+{"text": "how many calories have I had today", "domain": "food", "tool": "get_food_log", "args": {}}
+{"text": "what did I eat yesterday", "domain": "food", "tool": "get_food_log", "args": {"day": "yesterday"}}
+{"text": "I didn't actually eat the donut, take it off", "domain": "food", "tool": "undo_food", "args": {}}
+{"text": "change my protein shake to 250 calories", "domain": "food", "tool": "set_food_calories", "args": {"food": "protein shake", "calories": 250}}
+{"text": "how many calories are in a banana", "domain": "chat"}
+
 // follow-ups: "before" holds the earlier turns of the session (DR-33). Shaped on the deck's Nov 2 trace, made-up values.
 {"text": "that one was expected actually", "before": [{"user": "I spent 38 on gas", "ekko": "Add gas, $38 spent, marked unexpected. Go ahead?"}], "domain": "budget", "tool": "add_expense", "args": {"item": "gas", "amount": 38, "planned": true}}
 {"text": "mark the first one paid", "before": [{"user": "what bills do I still have", "ekko": "November: 3 bills left to pay, $82 in all: Water $58 on Nov 15, Streaming (Kids) $3.49 on Nov 22, Gym $20.51 on Nov 25. Ending balance $922."}], "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "water"}}
@@ -74,11 +90,12 @@
 {"text": "can you fire up steam for me", "before": [{"user": "what bills do I still have", "ekko": "November: 2 bills left to pay, $78 in all: Water $58 on Nov 15, Phone $20 on Nov 20."}, {"user": "thanks", "ekko": "You're welcome."}], "domain": "desktop", "tool": "open_app", "args": {"app": "steam"}}
 {"text": "another one", "before": [{"user": "tell me a joke", "ekko": "Why did the scarecrow win an award? Because he was outstanding in his field!"}], "domain": "chat"}
 {"text": "what about its logs", "before": [{"user": "is jellyfin ok", "ekko": "Jellyfin is running and healthy, up 5 days with no restarts."}], "domain": "server_ops"}
+{"text": "more like 560", "before": [{"user": "I had a big mac", "ekko": "New food: big mac at 590 calories each. Log big mac. Go ahead?"}], "domain": "food", "tool": "log_food", "args": {"items": [{"food": "big mac", "calories": 560}]}}
+{"text": "undo that", "before": [{"user": "I had a donut", "ekko": "Logged donut: 250 calories. 1,200 calories today."}], "domain": "food", "tool": "undo_food", "args": {}}
 
 // routing only: domains with no extraction step (not built yet, server ops' agent loop, chat's reply)
 {"text": "turn on the tv", "domain": "tv"}
 {"text": "switch the tv off", "domain": "tv"}
-{"text": "log two eggs and toast for breakfast", "domain": "food"}
 {"text": "what's on my calendar tomorrow", "domain": "calendar"}
 {"text": "am I free friday afternoon", "domain": "calendar"}
 {"text": "how much disk space is left on the server", "domain": "server_ops"}

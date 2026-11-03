@@ -1,5 +1,6 @@
 using Ekko.Brain.Budget;
 using Ekko.Brain.Desktop;
+using Ekko.Brain.Food;
 using Ekko.Brain.Llm;
 using Ekko.Brain.Media;
 using Ekko.Brain.Pipeline;
@@ -25,7 +26,17 @@ public static class TestPipeline
         agent ??= new ServerOpsAgent(new AgentModels(null, null), catalog, new RunStore(Path.Combine(Path.GetTempPath(), $"ekko-runs-{Guid.NewGuid():N}"), TimeProvider.System),
             new ServerOpsOptions(), trace, TimeProvider.System);
         memory ??= new ConversationMemory(TimeProvider.System, new ConversationOptions());
-        return new MessagePipeline(store, memory, catalog, new Router(call), new DomainHandler(catalog, call), agent, new Chat(call, catalog), trace);
+        return new MessagePipeline(store, memory, catalog, new Router(call), new DomainHandler(catalog, call), agent, new Chat(call, catalog), trace, new CurrentTurn());
+    }
+
+    /// <summary>Food tools whose estimate step asks <paramref name="estimate"/> (default: unreachable).</summary>
+    public static ITool[] FoodTools(FakeHttp food, TraceLog trace, ILlmClient? estimate = null)
+    {
+        var service = new FoodService(food.Client("http://food/"));
+        var call = new StructuredCall(new Dictionary<string, ILlmClient> { ["sonnet"] = estimate ?? new ScriptedLlm("sonnet", [null]) },
+            new Dictionary<string, StepModels> { ["estimate"] = new() { Primary = "sonnet" } }, trace);
+        return [new LogFood(service, new CalorieEstimator(call, new CurrentTurn())), new LogNewFood(service), new GetFoodLog(service),
+            new UndoFood(service), new SetFoodCalories(service), new SaveFoodCalories(service)];
     }
 
     public static ITool[] DesktopTools(FakeHttp pc)

@@ -24,6 +24,7 @@ services:
       PcService__BaseUrl: http://host.docker.internal:5070/  # Ekko.PcAgent, native on Windows
       TvRemote__BaseUrl: http://host.docker.internal:5055/   # tvremote container, via its published port
       Budget__BaseUrl: http://host.docker.internal:5080/     # the budget service below, via its published port
+      Food__BaseUrl: http://host.docker.internal:5085/       # the food service below, via its published port
     volumes:
       - ./data:/app/data       # trace.jsonl and saved server-ops runs, readable from the host
       # The server-ops agent measures the media drive. Read-only, and the only host folder it can see (ServerOps:Roots).
@@ -63,6 +64,23 @@ services:
     secrets:
       - google-sheets
 
+  food:
+    build:
+      context: .
+      dockerfile: Ekko.Food/Dockerfile
+    image: ekko-food
+    container_name: ekko-food
+    restart: unless-stopped
+    ports:
+      - "5085:8080"            # /food/* on http://<this PC>:5085
+    # Only its own key from .env: it holds no other secrets.
+    environment:
+      Api__Keys__brain: ${Food__ApiKey:?set Food__ApiKey in .env}
+      TZ: America/Chicago      # "today" is the house's day, not UTC's
+    volumes:
+      # A Docker volume, not a folder on C:. SQLite needs file locks that Windows bind mounts don't reliably give.
+      - food:/app/data
+
 secrets:
   google-sheets:
     file: ${GOOGLE_SHEETS_KEY_FILE:?set GOOGLE_SHEETS_KEY_FILE in .env to the service account's JSON key}
@@ -70,3 +88,6 @@ secrets:
 networks:
   docker-api:
     internal: true             # no route out, and nothing outside it can reach the proxy
+
+volumes:
+  food:                        # the food list and diary (ekko_food); back up with: docker cp ekko-food:/app/data/food.db .
