@@ -22,7 +22,7 @@ Everything currently runs on one Windows PC in Docker Desktop.
 | tvremote | http://localhost:5055 | Media API. Takes a phrase like "play Scooby-Doo" and plays it via Jellyfin. Echo's only media executor. |
 | tvshim | http://localhost:8097 | HTTP push that opens Jellyfin on the TV (`tv_launch_jellyfin`). |
 | jellyfin | http://localhost:8096 | Media server. Echo never calls it directly; tvremote does. Only container Echo may restart. |
-| speaches | http://localhost:8000 | OpenAI-compatible speech server (faster-whisper). Future speech-to-text for the glasses channel. Not used in phase 1. |
+| speaches | http://localhost:8000 | OpenAI-compatible speech server (faster-whisper). Transcribes Telegram voice notes (DR-37); the glasses channel will use it too. |
 | Ollama | http://localhost:11434/v1 | Local model `qwen3.5:9b`, OpenAI-compatible. Listens on 0.0.0.0. From a container use `host.docker.internal`. |
 | Claude API | https://api.anthropic.com/v1/messages | Key in `ANTHROPIC_API_KEY`. |
 
@@ -261,6 +261,26 @@ It tracks calories only: no meals, goals, past-day logging, nicknames, barcodes 
 - **Edge checks:** a food of up to 60 characters with no control characters, a quantity up to 2,000 (grams count one by one), up to 3,000 calories for one, and at most 10 foods per log.
 
 *Revisit if* a second device writes food; then it calls the service with its own key. Or if the diary has to live off this PC.
+
+*DR-37 was decided while connecting Telegram (Nov 3, 2026).*
+
+**DR-37: Telegram is a channel service, a client of the Brain like the deck (step 7, applies DR-23).** Options: rebuild the old app's bot inside the Brain, or a separate service that turns Telegram messages into `POST /message`. It's a service:
+- It holds a secret the Brain doesn't need (the bot token), and it runs differently: a loop that long-polls Telegram.
+- It reuses the old app's bot, the allowed user id, and the old approach. Long polling means every connection is outgoing. Only allowed Telegram user ids get an answer (Telegram supplies the sender, so it can't be faked), and strangers get silence. Replies are plain text.
+
+How it works:
+- **Text** goes to the Brain as channel `telegram`, one conversation per chat (`tg:<chat id>`), so follow-ups, approvals and "yes" work as on the deck.
+- **Voice notes** are transcribed by speaches (`faster-distil-whisper-small.en`, as before) and answered as text under `Heard: "…"`. Speech longer than the Brain's 500-character limit is said back, not sent.
+- **Messages sent while the PC was off aren't run.** Anything older than 10 minutes gets "You sent this at 2:05 PM while I was off". The old app ran them late, which is wrong for "lock the pc".
+- **The token stays out of the logs.** It's part of every Bot API URL, so the Telegram client owns its HttpClient (the factory's logging prints URLs), and failures are logged by type only.
+- **The Brain now takes one key per client** (`Api__Keys__deck`, `Api__Keys__telegram`), like the PC agent, Budget and Food, so either can be revoked alone. The deck's key kept its value.
+- **The Pi's pc-waker is off.** Only one program can receive a bot's messages, and two take each other's. The Pi's `pc-waker.service` ("Telegram fallback and Wake-on-LAN for the PC") takes the bot over whenever `pc.lan:5000/api/health` fails. `pc.lan` doesn't resolve from this PC, and the old app that answered on port 5000 is retired, so the waker had been receiving the bot's messages all along. Answering its health check on port 5000 didn't stop it: Telegram reported a second receiver (409) for the whole five minutes watched. The user disabled the waker, so there's no fallback when this PC is off. A message sent then waits at Telegram. When the bot is back, a message older than 10 minutes gets "while I was off", and a newer one is run. No port is published.
+
+The Brain still gets the whole `.env`, and with it the token, which it never reads.
+
+Not carried over: spoken replies, photos saved to a folder, barcodes, meal check-ins, alerts.
+
+*Revisit when* runs started elsewhere need approving from the phone; then this service polls `GET /runs/waiting` and sends Approve and Deny buttons (DR-29). Also revisit if waking the PC from Telegram is wanted back; then the waker's health check points at this PC's address, and the bot answers it again.
 
 ## Resolved questions
 
