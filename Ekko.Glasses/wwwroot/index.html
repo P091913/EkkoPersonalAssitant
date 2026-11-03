@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0d1117">
+    <title>Ekko for G2</title>
+    <style>
+        /* The phone side of the G2 page (what the Even app shows while it runs), and the preview in a browser:
+           the lens drawn as the glasses get it, the key, and a box to type instead of talking. */
+        :root {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --edge: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --lens: #000;
+            --glow: #5dff8f;
+            --glow-dim: #2c7a45;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        main { max-width: 640px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); }
+        h1 { font-size: 17px; margin: 0 0 4px; font-weight: 600; }
+        #status { color: var(--muted); font-size: 13px; margin: 0 0 12px; min-height: 1.2em; }
+
+        /* 576x288 at any width: positions are percentages, type is in container units. */
+        #screen { width: 100%; aspect-ratio: 2 / 1; background: var(--lens); border: 1px solid var(--edge); border-radius: 10px; container-type: inline-size; overflow: hidden; }
+        .lens { position: relative; width: 100%; height: 100%; font-size: 3.6cqw; line-height: 4.69cqw; color: var(--glow); }
+        .lens__text { position: absolute; overflow: hidden; padding: 0.7cqw; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .lens__text.is-capture { overflow-y: auto; }
+
+        #controls { display: flex; gap: 8px; margin: 10px 0 0; flex-wrap: wrap; }
+        #controls[hidden] { display: none; }
+        button { background: var(--panel); color: var(--text); border: 1px solid var(--edge); border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 14px; }
+        button:active { border-color: var(--glow-dim); }
+        .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+
+        form { margin-top: 16px; display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 12px; }
+        label { font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+        input { background: var(--bg); color: var(--text); border: 1px solid var(--edge); border-radius: 8px; padding: 9px 10px; font: inherit; font-size: 16px; width: 100%; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Ekko for G2</h1>
+    <p id="status">Starting…</p>
+    <div id="screen" aria-label="What the glasses show"></div>
+    <div id="controls" hidden>
+        <button data-gesture="tap">Tap</button>
+        <button data-gesture="double">Double tap</button>
+    </div>
+    <p class="hint">Tap to talk, tap again to send, double-tap to cancel. In a browser, Enter is a tap and Escape a double tap.</p>
+    <form id="typed">
+        <label>Type instead of talking <input id="said" maxlength="500" autocomplete="off" placeholder="how many calories have I had today"></label>
+        <button type="submit">Send to Ekko</button>
+    </form>
+    <form id="settings">
+        <label>Glasses key (Glasses_PageKey in .env) <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <button type="submit">Save</button>
+    </form>
+</main>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -12,8 +12,8 @@ services:
       # POST /message on http://<this PC>:5065. Not 5060: that's SIP, on fetch's blocked-port list, so browsers and
       # Node refuse to connect to it at all ("bad port").
       - "5065:8080"
-    # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Keys__deck and Api__Keys__telegram (one key
-    # per client -> Brain),
+    # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Keys__deck, Api__Keys__telegram and
+    # Api__Keys__glasses (one key per client -> Brain),
     # PcService__ApiKey (Brain -> PC agent; Ekko.PcAgent/install.ps1 reads the same line), TvRemote__ApiKey
     # (Brain -> tvremote; same value as tvremote's own Api__Key). PcAgent_DeckKey is also in .env for install.ps1;
     # the Brain ignores it.
@@ -99,6 +99,25 @@ services:
       Brain__ApiKey: ${Api__Keys__telegram:?set Api__Keys__telegram in .env}
       Speech__BaseUrl: http://host.docker.internal:8000/   # speaches, for voice notes
       TZ: America/Chicago      # "you sent this at 2:05 PM" in the house's time
+
+  # Ekko on the Even G2 (DR-38): the page the Even app runs, and /hear + /ask behind the page's own key.
+  glasses:
+    build:
+      context: .
+      dockerfile: Ekko.Glasses/Dockerfile
+    image: ekko-glasses
+    container_name: ekko-glasses
+    restart: unless-stopped
+    ports:
+      # This PC only, never the LAN. `tailscale serve --bg --https=8444 http://127.0.0.1:5090` puts it on the
+      # tailnet, with HTTPS, which the phone's mic needs in preview.
+      - "127.0.0.1:5090:8080"
+    # Only what this service needs. The Brain key stays here; the phone only ever holds the page key.
+    environment:
+      Glasses__PageKey: ${Glasses_PageKey:?set Glasses_PageKey in .env}
+      Brain__BaseUrl: http://host.docker.internal:5065/
+      Brain__ApiKey: ${Api__Keys__glasses:?set Api__Keys__glasses in .env}
+      Speech__BaseUrl: http://host.docker.internal:8000/   # speaches
 
 secrets:
   google-sheets:
