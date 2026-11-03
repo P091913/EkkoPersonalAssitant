@@ -12,7 +12,8 @@ services:
       # POST /message on http://<this PC>:5065. Not 5060: that's SIP, on fetch's blocked-port list, so browsers and
       # Node refuse to connect to it at all ("bad port").
       - "5065:8080"
-    # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Key (callers -> Brain),
+    # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Keys__deck and Api__Keys__telegram (one key
+    # per client -> Brain),
     # PcService__ApiKey (Brain -> PC agent; Ekko.PcAgent/install.ps1 reads the same line), TvRemote__ApiKey
     # (Brain -> tvremote; same value as tvremote's own Api__Key). PcAgent_DeckKey is also in .env for install.ps1;
     # the Brain ignores it.
@@ -80,6 +81,24 @@ services:
     volumes:
       # A Docker volume, not a folder on C:. SQLite needs file locks that Windows bind mounts don't reliably give.
       - food:/app/data
+
+  # Text and voice notes from your phone (DR-37). Long-polls Telegram: every connection is outgoing, so no ports.
+  # Nothing else may receive this bot's messages (two receivers take each other's): the Pi's pc-waker.service is off.
+  telegram:
+    build:
+      context: .
+      dockerfile: Ekko.Telegram/Dockerfile
+    image: ekko-telegram
+    container_name: ekko-telegram
+    restart: unless-stopped
+    # Only what this service needs: the bot token never goes anywhere else it's used.
+    environment:
+      Telegram__BotToken: ${Telegram_BotToken:?set Telegram_BotToken in .env}
+      Telegram__AllowedUsers: ${Telegram_AllowedUsers:?set Telegram_AllowedUsers in .env}
+      Brain__BaseUrl: http://host.docker.internal:5065/
+      Brain__ApiKey: ${Api__Keys__telegram:?set Api__Keys__telegram in .env}
+      Speech__BaseUrl: http://host.docker.internal:8000/   # speaches, for voice notes
+      TZ: America/Chicago      # "you sent this at 2:05 PM" in the house's time
 
 secrets:
   google-sheets:

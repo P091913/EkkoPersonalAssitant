@@ -2,14 +2,15 @@ namespace Ekko.Brain.Tests;
 
 public class ApiKeyTests
 {
+    private static readonly Dictionary<string, string> Keys = new() { ["deck"] = "deck-secret", ["telegram"] = "tg-secret", ["revoked"] = "" };
+
     [Theory]
-    [InlineData("secret", "secret", true)]
-    [InlineData("secret", "Secret", false)]
-    [InlineData("secret", "secret ", false)]
-    [InlineData("secret", null, false)]
-    [InlineData("secret", "", false)]
-    [InlineData(null, null, true)] // no key configured: open (Development only - Program refuses to start otherwise)
-    [InlineData("", "anything", true)]
-    public void Allows_only_the_exact_key(string? configured, string? supplied, bool allowed) =>
-        Assert.Equal(allowed, ApiKey.Allows(configured, supplied));
+    [InlineData("deck-secret", "deck")]
+    [InlineData("tg-secret", "telegram")]
+    [InlineData("Deck-secret", null)]
+    [InlineData("deck-secret ", null)]
+    [InlineData("", null)] // an emptied key revokes its client; it never matches an empty header
+    [InlineData(null, null)]
+    public void Each_client_has_its_own_exact_key(string? supplied, string? client) =>
+        Assert.Equal(client, ApiKey.ClientFor(Keys, supplied));
 }

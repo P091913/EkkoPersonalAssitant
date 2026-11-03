@@ -5,9 +5,9 @@ using Ekko.Brain.ServerOps;
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
-var apiKey = config["Api:Key"];
-if (string.IsNullOrEmpty(apiKey) && !builder.Environment.IsDevelopment())
-    throw new InvalidOperationException("Api:Key is required outside Development: /message can lock the PC.");
+var keys = config.GetSection("Api:Keys").Get<Dictionary<string, string>>() ?? [];
+if (keys.Count == 0 && !builder.Environment.IsDevelopment())
+    throw new InvalidOperationException("Api:Keys needs at least one client key outside Development: /message can lock the PC.");
 
 builder.Services.AddEkko(config, builder.Environment.ContentRootPath);
 
@@ -17,7 +17,7 @@ if (string.IsNullOrWhiteSpace(config["ANTHROPIC_API_KEY"]))
 
 app.Use(async (context, next) =>
 {
-    if (ApiKey.Allows(apiKey, context.Request.Headers[ApiKey.Header]))
+    if (keys.Count == 0 || ApiKey.ClientFor(keys, context.Request.Headers[ApiKey.Header]) is not null)
     {
         await next();
         return;
