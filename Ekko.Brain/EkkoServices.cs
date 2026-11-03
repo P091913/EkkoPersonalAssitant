@@ -14,16 +14,16 @@ public static class EkkoServices
     public static IServiceCollection AddEkko(this IServiceCollection services, IConfiguration config, string contentRoot)
     {
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton(sp => new ConversationStore(
-            sp.GetRequiredService<TimeProvider>(),
-            TimeSpan.FromMinutes(config.GetValue("Conversation:PendingMinutes", 3))));
+        var conversation = config.GetSection("Conversation").Get<ConversationOptions>() ?? new ConversationOptions();
+        services.AddSingleton(sp => new ConversationStore(sp.GetRequiredService<TimeProvider>(), TimeSpan.FromMinutes(conversation.PendingMinutes)));
+        services.AddSingleton(sp => new ConversationMemory(sp.GetRequiredService<TimeProvider>(), conversation));
         services.AddSingleton(sp => new TraceLog(
             Path.Combine(contentRoot, config["Trace:Path"] ?? "data/trace.jsonl"),
             sp.GetRequiredService<TimeProvider>()));
 
         var llm = config.GetSection("Llm").Get<LlmOptions>() ?? throw new InvalidOperationException("Llm config is missing.");
         foreach (var (step, models) in llm.Steps)
-            if (!llm.Clients.ContainsKey(models.Primary) || models.Fallback is { } f && !llm.Clients.ContainsKey(f))
+            if (new[] { models.Primary, models.Fallback, models.Deep }.OfType<string>().Any(name => !llm.Clients.ContainsKey(name)))
                 throw new InvalidOperationException($"Llm:Steps:{step} names a client that isn't in Llm:Clients.");
         // The agent loop uses Claude's native tool calling, which only the Anthropic client speaks.
         if (llm.Steps.GetValueOrDefault("server_ops") is { } opsStep && new[] { opsStep.Primary, opsStep.Fallback }.OfType<string>().Any(n => llm.Clients[n].Kind != LlmKind.Anthropic))

@@ -64,7 +64,7 @@ static class ServerOpsScenarios
 
             var requestId = $"ops-{i}";
             var clock = Stopwatch.StartNew();
-            var reply = await agent.StartAsync(s.Ask, "eval", new TraceEvent(requestId, "eval", "eval"), default);
+            var reply = await agent.StartAsync(s.Ask, "eval", History.None, new TraceEvent(requestId, "eval", "eval"), default);
             var seconds = clock.Elapsed.TotalSeconds;
 
             var lines = File.ReadLines(tracePath).Select(l => JsonDocument.Parse(l).RootElement)

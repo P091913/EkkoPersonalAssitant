@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 // Runs every utterance through the fast path, router and extractor exactly as the Brain wires them (AddEkko),
 // and scores each step. It never runs a tool: nothing on the PC or TV changes.
 //   dotnet run --project Ekko.Evals            (uses Ekko.Brain/appsettings.json + its user-secrets)
+//   dotnet run --project Ekko.Evals -- deep    (every case as if in a deep session: each step's Deep model, Claude; a few cents)
 //   dotnet run --project Ekko.Evals -- server-ops   (agent scenarios against canned servers; real Claude, a few cents)
 
 var here = Here();
@@ -43,9 +44,16 @@ var cases = File.ReadLines(Path.Combine(here, "utterances.jsonl"))
     .Select(l => JsonSerializer.Deserialize<Case>(l, web)!)
     .ToList();
 
-string Model(string step) => $"{config[$"Llm:Clients:{config[$"Llm:Steps:{step}:Primary"]}:Model"]}"
-    + (config[$"Llm:Steps:{step}:Fallback"] is { } f ? $" -> {config[$"Llm:Clients:{f}:Model"]}" : "");
-Console.WriteLine($"Ekko evals: {cases.Count} utterances | route: {Model("route")} | extract: {Model("extract")}");
+var deep = args.Contains("deep");
+string Model(string step)
+{
+    string Of(string? client) => $"{config[$"Llm:Clients:{client}:Model"]}";
+    var (first, then) = deep && config[$"Llm:Steps:{step}:Deep"] is { } d
+        ? (d, config[$"Llm:Steps:{step}:Primary"])
+        : (config[$"Llm:Steps:{step}:Primary"], config[$"Llm:Steps:{step}:Fallback"]);
+    return Of(first) + (then is null ? "" : $" -> {Of(then)}");
+}
+Console.WriteLine($"Ekko evals{(deep ? " (deep)" : "")}: {cases.Count} utterances | route: {Model("route")} | extract: {Model("extract")}");
 
 var outcomes = new List<Outcome>();
 for (var i = 0; i < cases.Count; i++)
@@ -53,6 +61,7 @@ for (var i = 0; i < cases.Count; i++)
     var c = cases[i];
     var t = new TraceEvent($"eval-{i}", "eval", "eval");
     var o = new Outcome(c);
+    var history = new History(c.Before ?? [], deep);
     if (FastPath.Match(c.Text) is { } fast && catalog.Find(fast.Tool) is { } fastTool)
     {
         (o.Fast, o.Domain, o.Tool, o.Args) = (true, Router.Name(fastTool.Domain), fast.Tool, fast.Args);
@@ -60,12 +69,12 @@ for (var i = 0; i < cases.Count; i++)
     else
     {
         var clock = Stopwatch.StartNew();
-        var route = await router.RouteAsync(c.Text, t, default);
+        var route = await router.RouteAsync(c.Text, history, t, default);
         (o.RouteMs, o.Domain, o.Low) = (clock.ElapsedMilliseconds, route is null ? null : Router.Name(route.Domain), route?.Confidence == Confidence.Low);
         if (route is not null && o.Domain == c.Domain && c.Tool is not null)
         {
             clock.Restart();
-            var call = await handler.ExtractAsync(route.Domain, c.Text, t, default);
+            var call = await handler.ExtractAsync(route.Domain, c.Text, history, t, default);
             (o.ExtractMs, o.Extracted, o.Tool, o.Args) = (clock.ElapsedMilliseconds, true, call?.Tool, call?.Args);
         }
     }
@@ -107,9 +116,12 @@ Console.WriteLine($"""
     """);
 
 foreach (var o in outcomes.Where(o => !o.Correct))
+{
+    var after = o.Case.Before is { Length: > 0 } before ? $" (after {before.Length} turns)" : "";
     Console.WriteLine(!o.DomainOk
-        ? $"  [{(o.Fast ? "fast" : "route")}]   \"{o.Case.Text}\" -> {o.Domain ?? "(no answer)"}, expected {o.Case.Domain}"
-        : $"  [extract] \"{o.Case.Text}\" -> {o.Tool ?? "(no answer)"} {o.Args?.GetRawText()}, expected {o.Case.Tool} {o.Case.Args?.GetRawText()}");
+        ? $"  [{(o.Fast ? "fast" : "route")}]   \"{o.Case.Text}\"{after} -> {o.Domain ?? "(no answer)"}, expected {o.Case.Domain}"
+        : $"  [extract] \"{o.Case.Text}\"{after} -> {o.Tool ?? "(no answer)"} {o.Args?.GetRawText()}, expected {o.Case.Tool} {o.Case.Args?.GetRawText()}");
+}
 Console.WriteLine($"\nTrace: {tracePath}");
 
 // One line per run, committed with the code, so accuracy can be tracked across prompt and model changes.
@@ -129,7 +141,8 @@ File.AppendAllText(Path.Combine(here, "history.jsonl"), JsonSerializer.Serialize
 static string Here([CallerFilePath] string path = "") => Path.GetDirectoryName(path)!;
 
 /// <param name="Tool">Expected tool; "none" = no tool fits; null = routing-only case (domain not built).</param>
-sealed record Case(string Text, string Domain, string? Tool = null, JsonElement? Args = null);
+/// <param name="Before">Earlier turns of the session, as the Brain would hand them to each step (DR-33).</param>
+sealed record Case(string Text, string Domain, string? Tool = null, JsonElement? Args = null, Turn[]? Before = null);
 
 sealed class Outcome(Case c)
 {

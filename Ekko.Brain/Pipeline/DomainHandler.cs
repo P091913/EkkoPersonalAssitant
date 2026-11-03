@@ -17,12 +17,20 @@ public sealed record ToolCall(string Tool, JsonElement Args)
 /// </summary>
 public sealed class DomainHandler(ToolCatalog catalog, StructuredCall llm)
 {
-    public Task<ToolCall?> ExtractAsync(Domain domain, string text, TraceEvent t, CancellationToken ct)
+    public Task<ToolCall?> ExtractAsync(Domain domain, string text, History history, TraceEvent t, CancellationToken ct)
     {
         var tools = catalog.ForDomain(domain);
-        var request = new LlmRequest(Prompt(domain, tools), [new LlmMessage("user", text)], Schema(tools));
-        return llm.AskAsync("extract", request, json => Validate(json, tools), t, ct);
+        // The note on earlier turns only when there are some: a single message gets exactly the prompt the evals were tuned on.
+        var prompt = Prompt(domain, tools) + (history.Turns.Count > 0 ? HistoryNote : "");
+        var request = new LlmRequest(prompt, history.Messages(text), Schema(tools));
+        return llm.AskAsync("extract", request, json => Validate(json, tools), t, ct, history.Deep);
     }
+
+    private const string HistoryNote = """
+
+        Earlier turns can fill in what the latest message leaves out: after "Add lunch, $12 spent, marked unexpected. Go ahead?",
+        "no, it was planned" is that same expense with planned true. The call is for the latest message.
+        """;
 
     /// <summary>anyOf one {tool: const name, args: that tool's schema} per tool, plus "none" - so constrained decoding can't mix them up.</summary>
     public static JsonNode Schema(IReadOnlyList<ITool> tools) =>

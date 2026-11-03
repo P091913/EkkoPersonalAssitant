@@ -29,6 +29,10 @@ public sealed record TraceEvent(string RequestId, string ConversationId, string 
     public long? LatencyMs { get; init; }
     public int? TokensIn { get; init; }
     public int? TokensOut { get; init; }
+    /// <summary>On the request line: earlier turns the message was handled with (DR-33).</summary>
+    public int? Turns { get; init; }
+    /// <summary>On the request line and model lines: the session was deep, so steps used their Deep model (DR-34).</summary>
+    public bool? Deep { get; init; }
     public string? Error { get; init; }
 }
 

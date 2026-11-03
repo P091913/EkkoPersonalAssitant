@@ -84,7 +84,7 @@ public class ServerOpsTests : IDisposable
 
     private static TraceEvent T => new("req", "c1", "test");
 
-    private Task<string> Start(ScriptedAgent model, string text = "is jellyfin ok?") => Agent(model).StartAsync(text, "c1", T, CancellationToken.None);
+    private Task<string> Start(ScriptedAgent model, string text = "is jellyfin ok?") => Agent(model).StartAsync(text, "c1", History.None, T, CancellationToken.None);
 
     private string OnlyRunId() => Path.GetFileNameWithoutExtension(Directory.GetFiles(_runs, "*.json").Single());
 
@@ -196,7 +196,7 @@ public class ServerOpsTests : IDisposable
     public async Task Without_a_Claude_key_it_says_so()
     {
         var agent = new ServerOpsAgent(new AgentModels(null, null), Catalog(), new RunStore(_runs, _clock), _options, _trace.TraceLog, _clock);
-        Assert.Contains("Claude API key", await agent.StartAsync("is jellyfin ok?", "c1", T, CancellationToken.None));
+        Assert.Contains("Claude API key", await agent.StartAsync("is jellyfin ok?", "c1", History.None, T, CancellationToken.None));
     }
 
     [Fact]
