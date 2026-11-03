@@ -1,5 +1,6 @@
 using Ekko.Brain.Budget;
 using Ekko.Brain.Desktop;
+using Ekko.Brain.Food;
 using Ekko.Brain.Llm;
 using Ekko.Brain.Media;
 using Ekko.Brain.Pipeline;
@@ -78,6 +79,22 @@ public static class EkkoServices
         services.AddScoped<ITool, MarkRowPaid>();
         services.AddScoped<ITool, AddExpense>();
 
+        var food = config.GetSection("Food").Get<FoodOptions>() ?? throw new InvalidOperationException("Food config is missing.");
+        services.AddHttpClient<FoodService>(c =>
+        {
+            c.BaseAddress = new Uri(food.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = TimeSpan.FromSeconds(food.TimeoutSeconds);
+            if (!string.IsNullOrEmpty(food.ApiKey))
+                c.DefaultRequestHeaders.Add(ApiKey.Header, food.ApiKey);
+        });
+        services.AddScoped<CalorieEstimator>();
+        services.AddScoped<ITool, LogFood>();
+        services.AddScoped<ITool, LogNewFood>();
+        services.AddScoped<ITool, GetFoodLog>();
+        services.AddScoped<ITool, UndoFood>();
+        services.AddScoped<ITool, SetFoodCalories>();
+        services.AddScoped<ITool, SaveFoodCalories>();
+
         var ops = config.GetSection("ServerOps").Get<ServerOpsOptions>() ?? throw new InvalidOperationException("ServerOps config is missing.");
         services.AddSingleton(ops);
         services.AddHttpClient<IServerHost, DockerHost>(c =>
@@ -103,6 +120,7 @@ public static class EkkoServices
         services.AddScoped<Router>();
         services.AddScoped<DomainHandler>();
         services.AddScoped<Chat>();
+        services.AddScoped<CurrentTurn>();
         services.AddScoped<MessagePipeline>();
         return services;
     }

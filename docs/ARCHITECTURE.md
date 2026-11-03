@@ -40,7 +40,7 @@ BRAIN      Pending state -> Fast path (no model) -> Router (Qwen 9B, 8 domains) 
            Server-ops agent (Claude agent loop) <- the only full agent loop
                  | validated tool calls
                  v
-EXECUTORS  PC service (over Tailscale) | Media API (tvremote) | TV (tvshim) | Google Sheets (budget) | Docker proxy (server ops)
+EXECUTORS  PC service (over Tailscale) | Media API (tvremote) | TV (tvshim) | Google Sheets (budget) | Food service (SQLite) | Docker proxy (server ops)
 ```
 
 Within the Brain, a request moves left to right and stops at the first step that can handle it.
@@ -81,8 +81,10 @@ There are 8 domains and about 28 tools, but the router only chooses among the do
 | Budget | `get_budget_status` | month? | Read-only | Budget service (Sheets) |
 | Budget | `mark_bill_paid` | item?, amount? (at least one; an amount alone finds the row) | Read-only lookup; the write is `mark_row_paid` (code-only, Write, confirm) | Budget service (Sheets) |
 | Budget | `add_expense` | item, amount, income?, planned? | Write, confirm | Budget service (Sheets) |
-| Food | `log_food` | item, quantity?, meal? | Reversible | Server |
-| Food | `get_food_log` | date | Read-only | Server |
+| Food | `log_food` | items: food, quantity?, calories? (the measure is part of the food: "gram of chicken" × 200) | Reversible; a food not on the list is read back first (`log_new_food`, code-only, Write, confirm) | Food service (SQLite) |
+| Food | `get_food_log` | day? (today, yesterday) | Read-only | Food service |
+| Food | `undo_food` | none | Reversible | Food service |
+| Food | `set_food_calories` | food, calories | Read-only lookup; the write is `save_food_calories` (code-only, Write, confirm) | Food service |
 | Calendar | `get_events` | start, end | Read-only | Server |
 | Calendar | `find_free_time` | date, duration | Read-only | Server |
 | Calendar | `create_event` | title, start, end | External, confirm | Server |
@@ -112,6 +114,7 @@ Each step uses the cheapest option that does it reliably, and logged failures de
 | Server-ops diagnosis | Claude (Haiku, then Sonnet) | none | Multi-step reasoning over logs |
 | General chat | Qwen 9B | Claude | Low stakes |
 | Routing, extraction and chat from a session's 6th message | Claude Haiku | Qwen 9B | Long history reads better on Claude (DR-34) |
+| Calories for a food not on the list | Claude Sonnet | Claude Haiku | Recall of published figures; once per food, confirmed by the user (DR-35) |
 
 - Every model call logs its input, output, latency, and whether validation passed.
 - When Qwen's output fails schema validation, retry once with the error message, then escalate to Claude.
@@ -124,7 +127,7 @@ The model decides *what* to call. The tool's risk class decides what has to happ
 | Risk class | Gate before execution | Examples |
 | --- | --- | --- |
 | Read-only | None | `get_events`, `get_disk_usage` |
-| Reversible | Argument validation and allowlist | `open_app`, `play_media`, `log_food`, `lock_pc` |
+| Reversible | Argument validation and allowlist | `open_app`, `play_media`, `log_food` (foods already on the list), `lock_pc` |
 | Write, confirm | Read back the exact values, then "yes" | `log_expense` |
 | External, confirm | Read back, then "yes" | `create_event` |
 | Approve | Push to phone, wait, resume the saved run | `restart_container`, `clear_cache_dir` |
@@ -231,6 +234,33 @@ Each record states the choice, the options considered, why this one, and what wo
 **DR-33: Ekko remembers the recent turns of a session (extends DR-19).** On the deck, follow-ups failed because Ekko remembered only what it was waiting on: "it was expected" after a read-back, a bare amount, an item named after a dropped "which one?". Each conversation now keeps its turns (what was said and what Ekko answered, with replies cut at 600 characters) in memory for one session. A session ends after 5 minutes of silence. The router, the extractor and chat get the earlier turns as one message marked as context, followed by the latest message on its own. The server-ops agent gets them in its run's first message, so "what about its logs?" knows what "its" means. Only the newest turns that fit in 6,000 characters are sent. Qwen runs with a 4,096-token context in Ollama, and this keeps history near 1,500 tokens, so a prompt can't be cut off from the front. The note telling a model how to use earlier turns is added only when there are some, so a single message gets exactly the prompt the evals were tuned on. The first version put it in every prompt, and two media cases regressed. "Yes", "no" and "which one" answers are still matched in code first (DR-16). A correction while Ekko waits for a yes still drops that question, but with context it now becomes a new read-back ("that one was expected actually" → "Add gas, $38 spent. Go ahead?"), so a corrected write is confirmed like any other. Earlier turns can quote sheet cells or logs: they are context, never instructions, and the gate still decides what runs. Eval cases can now carry earlier turns. Seven follow-ups shaped on the deck's trace route 7/7 on Qwen, and Qwen extracts all but one correctly: it kept "netflix" in "it's the 15.99 one". *Revisit if* sessions need to survive a restart, or conversations outgrow the window; then summarise older turns instead of dropping them.
 
 **DR-34: Long sessions move routing, extraction and chat to Claude (adds to DR-5).** This was the user's proposal: once a conversation is long, there's more history than a 9B model reads well. From a session's 6th message, each step's `Deep` model (Haiku) goes first, with the step's usual Primary (Qwen) as its fallback, so Ekko still answers without Claude. The session stays deep until it ends after 5 quiet minutes. Options: a rate (6 messages within 2 minutes), a message count, or a token count. A count was chosen: what strains the model is how much history it reads, not how fast that history arrived, and a count is easy to predict. It also means Qwen never reads more than 5 earlier turns. The model, the count and the minutes are config (`Llm:Steps:*:Deep`, `Conversation:*`), and the trace records `turns` and `deep`. The costs: during a long session the conversation goes to Anthropic, including budget figures Ekko read out, at about 1,900 input tokens per message for routing plus extraction. On the same Qwen-tuned prompts, Haiku scored 62/66, the same as Qwen, but missed different cases. It got every follow-up right and was about twice as fast (routing p50 0.8 s against 1.8 s). It reports low confidence more often, so it asks "Is that about the server?" more. *Revisit if* the trace shows Qwen handling long sessions well (raise the count), or Haiku's misses on single messages matter (tune prompts per model).
+
+*DR-35 and DR-36 were decided while building the food domain (Nov 3, 2026).*
+
+**DR-35: Foods are matched against the user's own list in code, and Claude estimates each new food once, confirmed by the user (replaces database lookups).** Options: search nutrition databases on every log (the old app: FatSecret, USDA and Open Food Facts), let a model estimate every log, or keep a personal list and estimate only what isn't on it. Most of the old app's 3,500 lines of food code patched wrong search matches ("big mac" became a Big Mac Salad, "2% milk" a frozen latte, "oreo cookies" the Frosted ones and then Cinnamon Bun) and unit conversions. The databases rank by matching words, not by what a person means, so each fix broke another food. Now:
+- **Extraction:** Qwen only pulls out words: items of `{food, quantity, calories?}`. The measure stays inside the food ("gram of chicken" × 200, "slice of pizza" × 2), so code never converts units.
+- **Matching:** the food service matches each food exactly on a key: its words lowercased, singular, without filler, and sorted. A near miss becomes a new food, never a wrong one.
+- **Known foods** log without a model and without a confirm. That's Reversible, because `undo_food` takes back the last log.
+- **New foods:** a message that names any food not on the list logs nothing until a read-back. Sonnet estimates the calories for one of it, with Haiku as fallback, unless the user gave a number. "Yes" saves the food and logs the message, through the code-only `log_new_food`. A different number ("more like 560") becomes a new read-back through `log_food` and recent turns (DR-33).
+- **`set_food_calories`** is a lookup whose read-back gives the old and the new number (DR-25). For a food not on the list, it falls into the same new-food read-back. In the evals, Qwen took "more like 560" for a change, and a yes must never save a number without logging the food.
+- **"Half a"** that Qwen leaves in the food is moved to the quantity in code.
+- **Tracing:** the estimate is a model call inside a tool, and the gate gives tools no trace event. A scoped `CurrentTurn` hands it the turn's event, so its lines share the request id.
+
+Results:
+- **Evals:** 14 food cases, all correct on Qwen and on Haiku. End to end, Qwen scored 75/79 and Haiku 76/79; every miss predates food.
+- **Live:** egg 72, toast 75, Big Mac 590, at about 330 input tokens and 1.3 to 2.5 s per estimate.
+
+It tracks calories only: no meals, goals, past-day logging, nicknames, barcodes or photos. *Revisit if* the list fills with near-duplicates ("protein shake" and "my shake"); then add nicknames. Or if estimates are often corrected; then use a nutrition source for packaged food by barcode, where matching is exact.
+
+**DR-36: Food is its own service with SQLite (applies DR-23).** Options: a table in the Brain, a Google Sheet like the budget, or a service. The user chose a local database over a sheet. It's a service because it owns its data, and the deck will likely want today's total without going through the Brain, which is DR-23's second consumer.
+- **Service:** `Ekko.Food` on port 5085, with one key per client. It holds no other secrets.
+- **Storage:** SQLite through `Microsoft.Data.Sqlite` with raw SQL, the only new package. The file sits in a Docker volume (`ekko_food`), not a Windows bind mount, because SQLite needs file locks that bind mounts don't reliably give.
+- **Entries keep their own calories,** so changing a food never rewrites past days.
+- **Days** follow the container's time zone (America/Chicago).
+- **Writes:** calls run one at a time, and a log is all or nothing in one transaction.
+- **Edge checks:** a food of up to 60 characters with no control characters, a quantity up to 2,000 (grams count one by one), up to 3,000 calories for one, and at most 10 foods per log.
+
+*Revisit if* a second device writes food; then it calls the service with its own key. Or if the diary has to live off this PC.
 
 ## Resolved questions
 

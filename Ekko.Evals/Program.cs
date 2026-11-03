@@ -171,24 +171,28 @@ sealed class Outcome(Case c)
         a.Count == b.Count && a.All(kv => b.TryGetValue(kv.Key, out var v) && v == kv.Value);
 
     /// <summary>Nulls dropped, schema defaults filled in, strings compared the way the fast path compares text.</summary>
-    private static Dictionary<string, string> Normalize(JsonElement? args, JsonNode schema)
+    private static Dictionary<string, string> Normalize(JsonElement? args, JsonNode? schema)
     {
         var result = new Dictionary<string, string>();
+        var properties = schema?["properties"] as JsonObject;
         if (args is { ValueKind: JsonValueKind.Object } obj)
             foreach (var p in obj.EnumerateObject().Where(p => p.Value.ValueKind != JsonValueKind.Null))
-                result[p.Name] = Value(p.Value);
-        if (schema["properties"] is JsonObject properties)
+                result[p.Name] = Value(p.Value, properties?[p.Name]);
+        if (properties is not null)
             foreach (var (name, property) in properties)
-                if (!result.ContainsKey(name) && property?["default"] is { } fallback)
-                    result[name] = Value(JsonSerializer.SerializeToElement(fallback));
+                if (!result.ContainsKey(name) && property?["default"] is { } fallback && fallback.GetValueKind() != JsonValueKind.Null)
+                    result[name] = Value(JsonSerializer.SerializeToElement(fallback), property);
         return result;
     }
 
-    // Numbers by value: 220, 220.0 and 220.00 are the same answer.
-    private static string Value(JsonElement v) => v.ValueKind switch
+    // Numbers by value: 220, 220.0 and 220.00 are the same answer. A list item by item, in order, each normalized like
+    // the args themselves: food items with and without "quantity": 1 are the same answer.
+    private static string Value(JsonElement v, JsonNode? schema) => v.ValueKind switch
     {
         JsonValueKind.String => Utterance.Simplify(v.GetString()!),
         JsonValueKind.Number => v.GetDouble().ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        JsonValueKind.Array => "[" + string.Join("; ", v.EnumerateArray().Select(e => Value(e, schema?["items"]))) + "]",
+        JsonValueKind.Object => "{" + string.Join(", ", Normalize(v, schema).OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key}={p.Value}")) + "}",
         _ => v.GetRawText(),
     };
 }

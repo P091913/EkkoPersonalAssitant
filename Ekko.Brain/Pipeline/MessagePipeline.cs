@@ -7,12 +7,13 @@ namespace Ekko.Brain.Pipeline;
 
 /// <summary>pending state -> fast path -> router -> domain handler -> reply. Each request stops at the first step that can handle it.</summary>
 public sealed class MessagePipeline(ConversationStore conversations, ConversationMemory memory, ToolCatalog catalog, Router router,
-    DomainHandler handler, ServerOpsAgent agent, Chat chat, TraceLog trace)
+    DomainHandler handler, ServerOpsAgent agent, Chat chat, TraceLog trace, CurrentTurn turn)
 {
     public async Task<MessageReply> HandleAsync(MessageRequest request, CancellationToken ct)
     {
         var started = Stopwatch.GetTimestamp();
         var t = new TraceEvent(Guid.NewGuid().ToString("N")[..12], request.ConversationId, request.Channel);
+        turn.Trace = t;
         var history = memory.Recall(request.ConversationId);
         trace.Write(t with { Step = "request", Input = request.Text, Turns = history.Turns.Count, Deep = history.Deep ? true : null });
         string text;
@@ -36,6 +37,7 @@ public sealed class MessagePipeline(ConversationStore conversations, Conversatio
     {
         var started = Stopwatch.GetTimestamp();
         var t = new TraceEvent(Guid.NewGuid().ToString("N")[..12], $"run:{runId}", channel);
+        turn.Trace = t;
         trace.Write(t with { Step = "request", Input = approved ? "approve" : "deny" });
         return Reply(t, await agent.ResumeAsync(runId, approved, t, ct), started);
     }

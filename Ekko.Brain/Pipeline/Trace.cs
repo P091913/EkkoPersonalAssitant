@@ -36,6 +36,15 @@ public sealed record TraceEvent(string RequestId, string ConversationId, string 
     public string? Error { get; init; }
 }
 
+/// <summary>
+/// The turn this request scope is serving, set by <see cref="MessagePipeline"/>. A tool that asks a model (a food estimate)
+/// gets no <see cref="TraceEvent"/> from the gate, so it takes this one, and its model lines share the turn's request_id.
+/// </summary>
+public sealed class CurrentTurn
+{
+    public TraceEvent Trace { get; set; } = new("none", "none", "none");
+}
+
 /// <summary>Appends one JSON line per step. Never write credentials into an event: this file is meant to be read and mined for evals.</summary>
 public sealed class TraceLog
 {
