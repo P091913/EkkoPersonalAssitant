@@ -282,10 +282,44 @@ Not carried over: spoken replies, photos saved to a folder, barcodes, meal check
 
 *Revisit when* runs started elsewhere need approving from the phone; then this service polls `GET /runs/waiting` and sends Approve and Deny buttons (DR-29). Also revisit if waking the PC from Telegram is wanted back; then the waker's health check points at this PC's address, and the bot answers it again.
 
+*DR-38 was decided before the glasses arrived (Nov 3, 2026). Everything that needs the hardware is marked as waiting for it.*
+
+**DR-38: The glasses are a web page inside the Even app, backed by a channel service (step 7, applies DR-23).** Options: Telegram, or a page running inside the Even app. Telegram can't hear the glasses: only apps running inside the Even app get the G2's mic. The Even app can mirror Telegram's notifications on the lens, so Telegram stays the fallback for reading. A page in the Even app gets the lens, the touchpad and the mic. It's what the old app built and what the user first pictured.
+
+How it works:
+- **`Ekko.Glasses`** serves the page and two routes:
+  - `/hear` takes audio and returns text, through speaches. It accepts WAV from the glasses, or a browser's own WebM or MP4 in preview, up to 2 MB.
+  - `/ask` takes text and returns Ekko's reply, through the Brain's `/message` as channel `glasses`, always in one conversation called `glasses`.
+  - There are two calls so the lens shows what was heard while Ekko works. A server-ops run can take 2 minutes.
+- **Reach:** the service is published on `127.0.0.1:5090` only, so nothing on the LAN can reach it (checked). `tailscale serve --https=8444` puts it on the tailnet with HTTPS, which a browser needs before it allows the mic.
+- **Keys: the first one held by a browser.**
+  - The page holds `Glasses_PageKey`. It's typed once on the phone, never put in a link or QR code, and only works for `/hear` and `/ask`.
+  - The service holds the Brain key (`Api__Keys__glasses`), so the phone never sees it.
+  - Each key can be revoked on its own. The page's files need no key, because they hold no secrets.
+- **The page** carries over the old app's `lens.js` (the SDK wrapper, the 999-byte text limit, the pretend lens) and its push-to-talk: tap to start, tap to send, double-tap to cancel, up to 30 seconds.
+- **The SDK** is `@evenrealities/even_hub_sdk` 0.0.16 from npm, MIT licensed, with its bundle unchanged. It's byte-identical to the old app's copy, so the old code was written against it. Neither has run on glasses yet.
+- **Preview mode:** in a normal browser the page draws the pretend lens with Tap and Double tap buttons, and records that device's own mic. So over Tailscale the phone can talk to Ekko through this page before the glasses arrive. A box to type instead of talking is there too.
+
+Checks:
+- A generated spoken question was transcribed word for word and answered.
+- Requests with a missing key, non-audio uploads and anything over 2 MB were all refused.
+- The preview was clicked through in a browser, with no console errors.
+
+Waiting for the hardware:
+- whether SDK 0.0.16's lens, mic and touchpad calls behave as the code expects;
+- how the page is opened in the Even app;
+- the lens layout, and how long replies read;
+- tapping against holding to talk;
+- filtering out other people's voices (0.0.16 reports `speakerRole`);
+- Telegram notifications on the lens.
+
+*Revisit when* the glasses arrive.
+
 ## Resolved questions
 
-- **Speech-to-text runs on the server.** The Even Hub SDK gives plugins raw microphone audio (16 kHz PCM) with no transcription API. The plugin streams audio to Echo, which transcribes it with speaches.
-- **No wake word for plugins** as far as public sources show. Plan: hold-to-speak on the glasses or R1 ring; keep the phone app's always-on mic as the hands-free fallback. Verify on hardware.
+- **Speech-to-text runs on the server.** The Even Hub SDK gives plugins raw microphone audio (16 kHz PCM) with no transcription API. The page records it and sends one WAV per press to `Ekko.Glasses`, which transcribes it with speaches (DR-38).
+- **No wake word for plugins** as far as public sources show. It's tap to talk and tap to send for now, as the old app did. Holding to talk and the R1 ring are still to be tried on hardware.
+- **Telegram can't use the glasses' mic.** Only apps running inside the Even app get it. The Even app can mirror Telegram notifications onto the lens, which covers alerts while the Ekko page is closed.
 - **The glasses have no speaker.** Replies on the glasses are short text on the lens; spoken replies stay on the phone and browser apps.
 - **Discord control uses hotkeys,** sent by the PC service.
 - **`lock_pc` skips confirmation.** Low risk.
