@@ -22,7 +22,7 @@ Everything currently runs on one Windows PC in Docker Desktop.
 | tvremote | http://localhost:5055 | Media API. Takes a phrase like "play Scooby-Doo" and plays it via Jellyfin. Echo's only media executor. |
 | tvshim | http://localhost:8097 | HTTP push that opens Jellyfin on the TV (`tv_launch_jellyfin`). |
 | jellyfin | http://localhost:8096 | Media server. Echo never calls it directly; tvremote does. Only container Echo may restart. |
-| speaches | http://localhost:8000 | OpenAI-compatible speech server (faster-whisper). Transcribes Telegram voice notes (DR-37); the glasses channel will use it too. |
+| speaches | http://localhost:8000 | OpenAI-compatible speech server (faster-whisper). Transcribes Telegram voice notes (DR-37), the glasses (DR-38) and the desk's Ask Ekko (DR-42). Each caller has its own URL and model setting. |
 | ekko-desk | http://localhost:8081, the Pi from its phase 4 | The projected desk (DR-39), its own repo. Owns the sticky notes Ekko adds. |
 | Ollama | http://localhost:11434/v1 | Local model `qwen3.5:9b`, OpenAI-compatible. Listens on 0.0.0.0. From a container use `host.docker.internal`. |
 | Claude API | https://api.anthropic.com/v1/messages | Key in `ANTHROPIC_API_KEY`. |
@@ -369,7 +369,7 @@ Checks:
 - **The router line still starts "sticky notes projected on the user's desk", with files added after.** A rewritten line ("the user's projected desk...") sent "I'm really looking forward to Scooby-Doo right now" to chat.
 - Live: an upload, list, byte-for-byte read-back and refusals all checked on the running service.
 
-Still to build: the desk's Files and viewer cards and its `POST /api/files/show`.
+The desk's Files and viewer cards and its `POST /api/files/show` were built on Nov 4, 2026. A photo sent on Telegram showed up on the desk.
 
 **DR-41: Ekko.Files also lists the photos and PDFs in your Downloads folder, read straight from it (extends DR-40).** You download a file on the PC and say "pull that up on the desk". Options:
 - dropping files into the deck's Chat (dropped: the deck serves only the Pi's own touchscreen, which has no files to drag in);
@@ -398,6 +398,17 @@ Checks:
   - "I didn't actually eat the donut, take it off" went to budget in two runs, on the same router prompt that passed it the run before. "Take it off" sounds like budget's "checked off".
   - **The food line was made firmer:** its example is now "I didn't eat the cookie, take it off", the same wording with a different food. Two new phrasings not in the prompt ("I never ate the fries, take them off", "scratch that last food, I didn't end up eating it") check that the fix carries over.
   - After the change, two runs in a row came out the same, 91/95, with only the 4 old misses.
+
+*DR-42 was decided while the desk added a voice button (Nov 4, 2026). The Brain needed no code change.*
+
+**DR-42: The desk is a channel too: "Ask Ekko" sends what you say from the desk.** Options: route the audio through an Ekko endpoint (like the glasses' `/hear`), or have the desk transcribe it and send text. The desk sends text:
+- **Speech:** the desk's hand tracker records the PC's mic between two taps (at most 15 s, never written to disk) and sends it straight to speaches, the same as Telegram and the glasses do. Going through `Ekko.Glasses` would tie the desk to the glasses service and its page key. The tracker stays on this PC in phase 4, so speaches' localhost address stays right.
+- **Message:** the desk server sends `POST /message` with channel `desk` in one conversation called `desk`, like the glasses, so follow-ups and yes/no questions work.
+- **Key:** `Api__Keys__desk`, which already read `/trace`. Keys aren't scoped by route, so the desk can now ask anything Telegram can, through the same safety gate.
+- **Replies:** the Brain doesn't shape replies per channel. The desk's chat card shows them through `/trace`, like every other channel.
+- **Approvals:** a server-ops run started from the desk waits in the `desk` conversation. Saying "approve" or "deny" there answers it, and the deck still lists it through `GET /runs/waiting`. The question ends "Say approve or deny.", so the desk shows replies in full rather than cutting them.
+
+Waiting: the desk's build, then "put a note on my desk: buy milk" said at the desk, end to end.
 
 ## Resolved questions
 
