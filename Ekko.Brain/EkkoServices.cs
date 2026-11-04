@@ -1,4 +1,5 @@
 using Ekko.Brain.Budget;
+using Ekko.Brain.Desk;
 using Ekko.Brain.Desktop;
 using Ekko.Brain.Food;
 using Ekko.Brain.Llm;
@@ -94,6 +95,16 @@ public static class EkkoServices
         services.AddScoped<ITool, UndoFood>();
         services.AddScoped<ITool, SetFoodCalories>();
         services.AddScoped<ITool, SaveFoodCalories>();
+
+        var desk = config.GetSection("Desk").Get<DeskOptions>() ?? throw new InvalidOperationException("Desk config is missing.");
+        services.AddHttpClient<DeskService>(c =>
+        {
+            c.BaseAddress = new Uri(desk.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = TimeSpan.FromSeconds(desk.TimeoutSeconds);
+            if (!string.IsNullOrEmpty(desk.ApiKey))
+                c.DefaultRequestHeaders.Add(ApiKey.Header, desk.ApiKey);
+        });
+        services.AddScoped<ITool, AddDeskNote>();
 
         var ops = config.GetSection("ServerOps").Get<ServerOpsOptions>() ?? throw new InvalidOperationException("ServerOps config is missing.");
         services.AddSingleton(ops);

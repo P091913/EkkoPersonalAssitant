@@ -12,8 +12,8 @@ services:
       # POST /message on http://<this PC>:5065. Not 5060: that's SIP, on fetch's blocked-port list, so browsers and
       # Node refuse to connect to it at all ("bad port").
       - "5065:8080"
-    # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Keys__deck, Api__Keys__telegram and
-    # Api__Keys__glasses (one key per client -> Brain),
+    # Secrets, never committed (see .gitignore): ANTHROPIC_API_KEY, Api__Keys__deck, Api__Keys__telegram,
+    # Api__Keys__glasses and Api__Keys__desk (one key per client -> Brain), Desk__ApiKey (Brain -> ekko-desk),
     # PcService__ApiKey (Brain -> PC agent; Ekko.PcAgent/install.ps1 reads the same line), TvRemote__ApiKey
     # (Brain -> tvremote; same value as tvremote's own Api__Key). PcAgent_DeckKey is also in .env for install.ps1;
     # the Brain ignores it.
@@ -26,6 +26,8 @@ services:
       TvRemote__BaseUrl: http://host.docker.internal:5055/   # tvremote container, via its published port
       Budget__BaseUrl: http://host.docker.internal:5080/     # the budget service below, via its published port
       Food__BaseUrl: http://host.docker.internal:5085/       # the food service below, via its published port
+      # ekko-desk (DR-39): http://host.docker.internal:8081/ while it runs on this PC, then the Pi's tailnet URL, so it lives in .env.
+      Desk__BaseUrl: ${Desk_BaseUrl:?set Desk_BaseUrl in .env}
     volumes:
       - ./data:/app/data       # trace.jsonl and saved server-ops runs, readable from the host
       # The server-ops agent measures the media drive. Read-only, and the only host folder it can see (ServerOps:Roots).
