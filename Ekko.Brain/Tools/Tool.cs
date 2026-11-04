@@ -5,7 +5,7 @@ using Ekko.Brain.Pipeline;
 namespace Ekko.Brain.Tools;
 
 /// <summary>The fixed domain list the router chooses from. Each tool belongs to exactly one.</summary>
-public enum Domain { Desktop, Media, Tv, Budget, Food, Calendar, ServerOps, Chat }
+public enum Domain { Desktop, Media, Tv, Budget, Food, Desk, Calendar, ServerOps, Chat }
 
 /// <summary>What happens before a call runs. Read from <see cref="RiskClassAttribute"/> by <see cref="ToolGate"/>, never from a prompt.</summary>
 public enum Risk { ReadOnly, Reversible, WriteConfirm, ExternalConfirm, Approve }

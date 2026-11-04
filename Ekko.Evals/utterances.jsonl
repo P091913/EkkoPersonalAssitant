@@ -82,6 +82,16 @@
 {"text": "change my protein shake to 250 calories", "domain": "food", "tool": "set_food_calories", "args": {"food": "protein shake", "calories": 250}}
 {"text": "how many calories are in a banana", "domain": "chat"}
 
+// desk - sticky notes on the projected desk (DR-39). The text is only the note's words. "Desk" is never the PC (desktop),
+// and a reminder at a set time is calendar, even when it sounds like a note.
+{"text": "put a note on my desk: call mom", "domain": "desk", "tool": "add_desk_note", "args": {"text": "call mom"}}
+{"text": "stick a note on my desk saying buy milk", "domain": "desk", "tool": "add_desk_note", "args": {"text": "buy milk"}}
+{"text": "add a desk note to email Sam about the invoice", "domain": "desk", "tool": "add_desk_note", "args": [{"text": "email Sam about the invoice"}, {"text": "to email Sam about the invoice"}]}
+{"text": "can you put a sticky note on my desk that says dentist on thursday", "domain": "desk", "tool": "add_desk_note", "args": {"text": "dentist on thursday"}}
+{"text": "note on my desk, renew the passport", "domain": "desk", "tool": "add_desk_note", "args": {"text": "renew the passport"}}
+{"text": "remind me at 5 to call mom", "domain": "calendar"}
+{"text": "open steam on my desktop", "domain": "desktop", "tool": "open_app", "args": {"app": "steam"}}
+
 // follow-ups: "before" holds the earlier turns of the session (DR-33). Shaped on the deck's Nov 2 trace, made-up values.
 {"text": "that one was expected actually", "before": [{"user": "I spent 38 on gas", "ekko": "Add gas, $38 spent, marked unexpected. Go ahead?"}], "domain": "budget", "tool": "add_expense", "args": {"item": "gas", "amount": 38, "planned": true}}
 {"text": "mark the first one paid", "before": [{"user": "what bills do I still have", "ekko": "November: 3 bills left to pay, $82 in all: Water $58 on Nov 15, Streaming (Kids) $3.49 on Nov 22, Gym $20.51 on Nov 25. Ending balance $922."}], "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "water"}}

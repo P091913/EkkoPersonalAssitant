@@ -23,6 +23,7 @@ Everything currently runs on one Windows PC in Docker Desktop.
 | tvshim | http://localhost:8097 | HTTP push that opens Jellyfin on the TV (`tv_launch_jellyfin`). |
 | jellyfin | http://localhost:8096 | Media server. Echo never calls it directly; tvremote does. Only container Echo may restart. |
 | speaches | http://localhost:8000 | OpenAI-compatible speech server (faster-whisper). Transcribes Telegram voice notes (DR-37); the glasses channel will use it too. |
+| ekko-desk | http://localhost:8081, the Pi from its phase 4 | The projected desk (DR-39), its own repo. Owns the sticky notes Ekko adds. |
 | Ollama | http://localhost:11434/v1 | Local model `qwen3.5:9b`, OpenAI-compatible. Listens on 0.0.0.0. From a container use `host.docker.internal`. |
 | Claude API | https://api.anthropic.com/v1/messages | Key in `ANTHROPIC_API_KEY`. |
 
@@ -60,7 +61,7 @@ Every request passes through the same six steps, and a model is involved in at m
 
 ## Domain and tool catalog
 
-There are 8 domains and about 28 tools, but the router only chooses among the domains, and each handler sees only its own tools. The risk class decides what has to happen before a call runs (see Safety).
+There are 9 domains and about 29 tools, but the router only chooses among the domains, and each handler sees only its own tools. The risk class decides what has to happen before a call runs (see Safety).
 
 | Domain | Tool | Arguments | Risk class | Runs on |
 | --- | --- | --- | --- | --- |
@@ -85,6 +86,7 @@ There are 8 domains and about 28 tools, but the router only chooses among the do
 | Food | `get_food_log` | day? (today, yesterday) | Read-only | Food service |
 | Food | `undo_food` | none | Reversible | Food service |
 | Food | `set_food_calories` | food, calories | Read-only lookup; the write is `save_food_calories` (code-only, Write, confirm) | Food service |
+| Desk | `add_desk_note` | text (up to 200 characters) | Reversible | ekko-desk (`POST /api/notes`) |
 | Calendar | `get_events` | start, end | Read-only | Server |
 | Calendar | `find_free_time` | date, duration | Read-only | Server |
 | Calendar | `create_event` | title, start, end | External, confirm | Server |
@@ -314,6 +316,30 @@ Waiting for the hardware:
 - Telegram notifications on the lens.
 
 *Revisit when* the glasses arrive.
+
+*DR-39 was decided while planning the projected desk (Nov 3, 2026). The desk is its own repo, ekko-desk, whose PLAN.md has the rest.*
+
+**DR-39: The projected desk is its own app on the Pi, and Ekko puts notes on it with one tool (applies DR-23).** Options: a page in ekko-deck, a container on this PC, or a separate app on the Pi. It's a separate app on the Pi:
+- **Not in ekko-deck:** the deck must keep working, so the desk has its own server (`127.0.0.1:8081`), systemd unit and Chromium window. A desk crash or deploy can't touch the deck.
+- **Not a container on this PC:** the page would then be remote and need a key typed into a kiosk with no keyboard, and the desk would go blank whenever the PC is off. The desk keeps its own state (layout, notes, timer) on the Pi.
+- **No new containers:** the hand tracker runs natively on this PC, because Docker Desktop can't see a USB webcam (the same reason as PcAgent), and the Pi doesn't run Docker.
+
+How Ekko uses it:
+- **`add_desk_note(text)`** in a new `desk` domain, Reversible: the note lands at once, and dragging it to the desk's trash takes it off. It works from every channel.
+- **The desk words its own answers,** including its refusals (a full desk, a note over 200 characters). Ekko checks the length too, so a long note is refused before it's sent.
+- **Reach:** `Desk__BaseUrl` is `host.docker.internal:8081` while the desk runs on this PC, then the Pi's tailnet URL. It lives in `.env`, which keeps the tailnet name out of git.
+- **One key each way:** `Desk__ApiKey` is the Brain's key to the desk (the desk's `DESK_BRAIN_KEY`). `Api__Keys__desk` is the desk's key to the Brain, used to read `/trace` for its chat card.
+- **The router line sits just above food.** Placed elsewhere, it flipped "I didn't actually eat the donut, take it off" to budget.
+
+Checks:
+- 8 unit tests: the request sent, the desk's wording passed through, a refused key, a desk that's off, and long or blank notes never sent.
+- Evals: 82/86, with 7 new cases all passing. They include near misses: "remind me at 5 to call mom" stays calendar, and "open steam on my desktop" stays desktop. The 4 misses are older ones, none in food or desk.
+
+Waiting:
+- the desk's `POST /api/notes` (ekko-desk phase 3), then "put a note on my desk" end to end from Telegram;
+- the Brain container reaching the Pi over the tailnet (phase 4). If tailnet names don't resolve inside Docker, `extra_hosts` with the Pi's tailnet IP keeps HTTPS valid.
+
+*Revisit when* Ekko should read notes back or take them off ("what's on my desk?").
 
 ## Resolved questions
 
