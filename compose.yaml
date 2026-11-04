@@ -100,7 +100,34 @@ services:
       Brain__BaseUrl: http://host.docker.internal:5065/
       Brain__ApiKey: ${Api__Keys__telegram:?set Api__Keys__telegram in .env}
       Speech__BaseUrl: http://host.docker.internal:8000/   # speaches, for voice notes
+      Files__BaseUrl: http://host.docker.internal:5095/    # photos and PDFs go to the file store below
+      Files__ApiKey: ${Files_TelegramKey:?set Files_TelegramKey in .env}
       TZ: America/Chicago      # "you sent this at 2:05 PM" in the house's time
+
+  # Photos and PDFs sent to Ekko from Telegram or the deck, kept for the desk to show (DR-40).
+  files:
+    build:
+      context: .
+      dockerfile: Ekko.Files/Dockerfile
+    image: ekko-files
+    container_name: ekko-files
+    restart: unless-stopped
+    ports:
+      - "5095:8080"            # /files on http://<this PC>:5095; the Pi reaches it over the tailnet, as it does the Brain
+    # One key per client, picked out of .env: it holds no other secrets.
+    environment:
+      Api__Keys__telegram: ${Files_TelegramKey:?set Files_TelegramKey in .env}
+      Api__Keys__deck: ${Files_DeckKey:?set Files_DeckKey in .env}
+      Api__Keys__desk: ${Files_DeskKey:?set Files_DeskKey in .env}
+      Files__PcFolder: /host/pc
+    volumes:
+      - files:/app/data
+      # Your Downloads (DR-41), read-only: the photos and PDFs saved there are listed and served too. Only that folder's
+      # top level, and nothing in it can be changed. The path lives in .env, to keep it out of git.
+      - type: bind
+        source: ${Files_PcFolder:?set Files_PcFolder in .env to your Downloads folder}
+        target: /host/pc
+        read_only: true
 
   # Ekko on the Even G2 (DR-38): the page the Even app runs, and /hear + /ask behind the page's own key.
   glasses:
@@ -131,3 +158,4 @@ networks:
 
 volumes:
   food:                        # the food list and diary (ekko_food); back up with: docker cp ekko-food:/app/data/food.db .
+  files:                       # photos and PDFs (ekko_files); back up with: docker cp ekko-files:/app/data/files .

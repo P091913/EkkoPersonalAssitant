@@ -61,7 +61,7 @@ Every request passes through the same six steps, and a model is involved in at m
 
 ## Domain and tool catalog
 
-There are 9 domains and about 29 tools, but the router only chooses among the domains, and each handler sees only its own tools. The risk class decides what has to happen before a call runs (see Safety).
+There are 9 domains and about 30 tools, but the router only chooses among the domains, and each handler sees only its own tools. The risk class decides what has to happen before a call runs (see Safety).
 
 | Domain | Tool | Arguments | Risk class | Runs on |
 | --- | --- | --- | --- | --- |
@@ -87,6 +87,7 @@ There are 9 domains and about 29 tools, but the router only chooses among the do
 | Food | `undo_food` | none | Reversible | Food service |
 | Food | `set_food_calories` | food, calories | Read-only lookup; the write is `save_food_calories` (code-only, Write, confirm) | Food service |
 | Desk | `add_desk_note` | text (up to 200 characters) | Reversible | ekko-desk (`POST /api/notes`) |
+| Desk | `show_file_on_desk` | name (optional words; the newest file without them) | Reversible | ekko-desk (`POST /api/files/show`), which finds it in Ekko.Files |
 | Calendar | `get_events` | start, end | Read-only | Server |
 | Calendar | `find_free_time` | date, duration | Read-only | Server |
 | Calendar | `create_event` | title, start, end | External, confirm | Server |
@@ -340,6 +341,63 @@ Waiting:
 - the Brain container reaching the Pi over the tailnet (phase 4). If tailnet names don't resolve inside Docker, `extra_hosts` with the Pi's tailnet IP keeps HTTPS valid.
 
 *Revisit when* Ekko should read notes back or take them off ("what's on my desk?").
+
+**DR-40: Files sent to Ekko live in their own store, Ekko.Files, and the desk shows them.** You send a photo or PDF from Telegram or drop it into the deck's Chat, then pull it up on the desk. Options: keep files on the desk itself, in the Brain, or in a store of their own. It's a store of its own:
+- **Not on the desk:** Telegram and the deck would each have to know the desk, and nothing could be sent while the desk is off.
+- **Not in the Brain:** the Brain routes and decides. Holding files would make it a storage service too.
+- **A store keeps everyone apart:** channels upload to it, and the desk reads from it. No channel knows the desk exists, and the desk doesn't know where a file came from. Later uses, like reading a receipt into the budget, can read the same store.
+
+How it works:
+- **Service:** `Ekko.Files` on port 5095, files in the `ekko_files` volume. `POST /files` (multipart field `file`), `GET /files` (newest first), `GET /files/{id}`.
+- **Keys:** one per client (`telegram`, `deck`, `desk`), and each file records whose key sent it.
+- **Only photos and PDFs:** JPEG, PNG, GIF, WebP and PDF, told apart by their first bytes, never by name. That leaves out SVG, which can carry script. Files can be up to 20 MB, the most Telegram lets a bot download, so every channel has the same limit.
+- **The store words its answers** ("Saved “invoice.pdf”."), so Telegram and the deck show the same sentences.
+- **Telegram:** a photo or document is downloaded and saved. A caption then goes to the Brain as a normal message, but only if the file was saved, because the caption is likely about the file.
+- **Kept until deleted.** Closing a card on the desk doesn't delete the file. Deleting comes later.
+- **Opens only when asked:** a new file doesn't appear on the desk by itself. It opens from a tap on the desk's Files card, or from `show_file_on_desk(name)`.
+- **`show_file_on_desk` passes only words.** The Brain sends the user's words for the file ("invoice", "photo", or none for the newest) to the desk's `POST /api/files/show`. The desk asks `GET /files?q=` and opens what the store returns. Which file the words mean is decided in code, in the store, not by the model:
+  - each word must appear in the file's name;
+  - "photo" or "pdf" means that kind of file instead;
+  - words like "it" and "last" count for nothing.
+- **The Brain holds no Files key.** It reaches files only through the desk, which uses its own key.
+
+Checks:
+- 27 store tests: type by content, refusals, name cleanup, ids that can't name a path, and which file words pick.
+- 3 Telegram tests: a caption goes on after the file is saved, a refusal stops the caption, and a file over 20 MB is never downloaded.
+- 3 new Brain tests: the words sent, the newest file when none are given, and the desk's refusal passed through.
+- Evals: 87/91, with 5 new cases all passing, including a near miss: "put a note on my desk saying pay the invoice" stays a note. The 4 misses are the old ones.
+- **The router line still starts "sticky notes projected on the user's desk", with files added after.** A rewritten line ("the user's projected desk...") sent "I'm really looking forward to Scooby-Doo right now" to chat.
+- Live: an upload, list, byte-for-byte read-back and refusals all checked on the running service.
+
+Still to build: the desk's Files and viewer cards and its `POST /api/files/show`.
+
+**DR-41: Ekko.Files also lists the photos and PDFs in your Downloads folder, read straight from it (extends DR-40).** You download a file on the PC and say "pull that up on the desk". Options:
+- dropping files into the deck's Chat (dropped: the deck serves only the Pi's own touchscreen, which has no files to drag in);
+- a dedicated folder you drag files into;
+- a "send to Ekko" step on the PC;
+- Downloads itself.
+
+It's Downloads, because a file you just got is already there. Telegram, including Telegram Desktop, covers the Mac and the phone.
+- **Read-only mount:** `Files_PcFolder` in `.env` (the path stays out of git) is mounted at `/host/pc`.
+  - Only the folder's top level counts. Subfolders, hidden files and half-finished downloads are skipped.
+  - Only photos and PDFs up to 20 MB count, judged by their contents.
+- **Nothing is copied:**
+  - Downloads files are listed and served beside the files you sent, marked `"from": "pc"`.
+  - Everything is sorted together, sent files by when they arrived and downloads by when they last changed. "Pull that up" is the newest of either.
+  - Delete a file from Downloads and it's gone from the list.
+- **Ids:** a hash of name, size and time last changed, in the same form as the store's ids, so the desk's contract didn't change. A changed file gets a new id.
+- **What this exposes:** whoever holds a Files key can list and read the photos and PDFs in Downloads. That means Telegram's container, and the Pi through the desk's key (and the deck's, if the deck ever uses its key). Nothing else on the PC is exposed, and nothing can be written. To narrow it, point `Files_PcFolder` at a dedicated folder.
+- **Limit:** "the newest" goes by the time a file last changed. A file copied into Downloads from elsewhere keeps its old date, so name it ("show the scan on my desk").
+- **No client key may be named `pc`:** that name marks files from the folder, and Ekko.Files refuses to start with such a key.
+
+Checks:
+- 3 store tests: Downloads sorted with sent files and read from the folder, only real photos and PDFs at the top level counted, and a changed or deleted download no longer found.
+- Live: the mount refused a write. A PDF dropped into Downloads came up as the newest file, matched by name, read back byte for byte, and was gone (404) once removed.
+- Evals: 88/93, with both new phrases passing.
+  - The tool's `name` now says to name the file "whenever the user names it". Before that change, "put the lease I just downloaded on my desk" left the name out and asked for the newest file.
+  - "I didn't actually eat the donut, take it off" went to budget in two runs, on the same router prompt that passed it the run before. "Take it off" sounds like budget's "checked off".
+  - **The food line was made firmer:** its example is now "I didn't eat the cookie, take it off", the same wording with a different food. Two new phrasings not in the prompt ("I never ate the fries, take them off", "scratch that last food, I didn't end up eating it") check that the fix carries over.
+  - After the change, two runs in a row came out the same, 91/95, with only the 4 old misses.
 
 ## Resolved questions
 

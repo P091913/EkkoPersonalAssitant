@@ -9,10 +9,16 @@ public class DeskTests
 {
     private readonly FakeHttp _desk = new();
 
-    private ToolCatalog Catalog() => new([new AddDeskNote(new DeskService(_desk.Client("http://desk/")))]);
+    private ToolCatalog Catalog()
+    {
+        var desk = new DeskService(_desk.Client("http://desk/"));
+        return new([new AddDeskNote(desk), new ShowDeskFile(desk)]);
+    }
 
-    private Task<ToolResult> Note(string args) =>
-        ToolGate.ExecuteAsync(Catalog().Find("add_desk_note")!, JsonDocument.Parse(args).RootElement, confirmed: false, CancellationToken.None);
+    private Task<ToolResult> Call(string tool, string args) =>
+        ToolGate.ExecuteAsync(Catalog().Find(tool)!, JsonDocument.Parse(args).RootElement, confirmed: false, CancellationToken.None);
+
+    private Task<ToolResult> Note(string args) => Call("add_desk_note", args);
 
     private void Answer(HttpStatusCode status, string body) =>
         _desk.Respond = _ => new HttpResponseMessage(status) { Content = new StringContent(body) };
@@ -63,7 +69,31 @@ public class DeskTests
         Assert.Empty(_desk.Requests);
     }
 
+    [Theory]
+    [InlineData("""{"name":" invoice "}""", """{"name":"invoice"}""")]
+    [InlineData("{}", """{"name":""}""")] // "put it on my desk": the newest file
+    public async Task A_file_is_asked_for_by_its_words_and_the_desk_words_the_reply(string args, string sent)
+    {
+        Answer(HttpStatusCode.OK, """{"ok":true,"message":"Opened “invoice.pdf” on your desk."}""");
+
+        var result = await Call("show_file_on_desk", args);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.Next); // Reversible: no read-back first
+        Assert.Equal("Opened “invoice.pdf” on your desk.", result.Say);
+        var request = _desk.Requests.Single();
+        Assert.Equal((HttpMethod.Post, "/api/files/show", sent), (request.Method, request.Path, request.Body));
+    }
+
     [Fact]
-    public void The_desk_domain_offers_only_adding_a_note() =>
-        Assert.Equal(["add_desk_note"], Catalog().ForDomain(Domain.Desk).Select(t => t.Name));
+    public async Task A_file_the_desk_cant_find_is_said_in_its_words()
+    {
+        Answer(HttpStatusCode.NotFound, """{"ok":false,"error":"I couldn't find a file called “invoice”."}""");
+
+        Assert.Equal("I couldn't find a file called “invoice”.", (await Call("show_file_on_desk", """{"name":"invoice"}""")).Say);
+    }
+
+    [Fact]
+    public void The_desk_domain_offers_notes_and_files() =>
+        Assert.Equal(["add_desk_note", "show_file_on_desk"], Catalog().ForDomain(Domain.Desk).Select(t => t.Name));
 }

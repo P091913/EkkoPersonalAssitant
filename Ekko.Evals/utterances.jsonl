@@ -79,6 +79,9 @@
 {"text": "how many calories have I had today", "domain": "food", "tool": "get_food_log", "args": {}}
 {"text": "what did I eat yesterday", "domain": "food", "tool": "get_food_log", "args": {"day": "yesterday"}}
 {"text": "I didn't actually eat the donut, take it off", "domain": "food", "tool": "undo_food", "args": {}}
+// Not in the router prompt: checks the food line's "take it off" example carries over instead of only matching itself.
+{"text": "I never ate the fries, take them off", "domain": "food", "tool": "undo_food", "args": {}}
+{"text": "scratch that last food, I didn't end up eating it", "domain": "food", "tool": "undo_food", "args": {}}
 {"text": "change my protein shake to 250 calories", "domain": "food", "tool": "set_food_calories", "args": {"food": "protein shake", "calories": 250}}
 {"text": "how many calories are in a banana", "domain": "chat"}
 
@@ -89,6 +92,16 @@
 {"text": "add a desk note to email Sam about the invoice", "domain": "desk", "tool": "add_desk_note", "args": [{"text": "email Sam about the invoice"}, {"text": "to email Sam about the invoice"}]}
 {"text": "can you put a sticky note on my desk that says dentist on thursday", "domain": "desk", "tool": "add_desk_note", "args": {"text": "dentist on thursday"}}
 {"text": "note on my desk, renew the passport", "domain": "desk", "tool": "add_desk_note", "args": {"text": "renew the passport"}}
+// desk - a photo or PDF the user sent (DR-40). The store decides which file the words mean and ignores "the", "that" or "it",
+// so those answers behave the same.
+{"text": "put it on my desk", "domain": "desk", "tool": "show_file_on_desk", "args": [{}, {"name": ""}, {"name": "it"}]}
+{"text": "show the invoice on my desk", "domain": "desk", "tool": "show_file_on_desk", "args": [{"name": "invoice"}, {"name": "the invoice"}]}
+{"text": "pull up the photo I sent on my desk", "domain": "desk", "tool": "show_file_on_desk", "args": [{"name": "photo"}, {"name": "the photo"}]}
+{"text": "can you open that pdf on my desk", "domain": "desk", "tool": "show_file_on_desk", "args": [{"name": "pdf"}, {"name": "that pdf"}]}
+{"text": "put a note on my desk saying pay the invoice", "domain": "desk", "tool": "add_desk_note", "args": {"text": "pay the invoice"}}
+// ...or one saved in Downloads (DR-41): the store also ignores "from", "downloaded" and "folder".
+{"text": "hey ekko go ahead and pull that up on the desk", "domain": "desk", "tool": "show_file_on_desk", "args": [{}, {"name": ""}, {"name": "that"}]}
+{"text": "put the lease I just downloaded on my desk", "domain": "desk", "tool": "show_file_on_desk", "args": [{"name": "lease"}, {"name": "the lease"}, {"name": "lease I just downloaded"}, {"name": "the lease I just downloaded"}]}
 {"text": "remind me at 5 to call mom", "domain": "calendar"}
 {"text": "open steam on my desktop", "domain": "desktop", "tool": "open_app", "args": {"app": "steam"}}
 

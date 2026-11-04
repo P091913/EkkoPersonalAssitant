@@ -43,6 +43,42 @@ public sealed class BrainClient(HttpClient http, ILogger<BrainClient> log)
     }
 }
 
+/// <summary>Ekko.Files, where photos and PDFs sent here are kept for the desk (DR-40). It words its own answers.</summary>
+public sealed class FilesClient(HttpClient http, ILogger<FilesClient> log)
+{
+    private sealed record Saved(bool Ok, string? Message);
+
+    /// <summary>Whether it was kept, and a sentence saying so or why not.</summary>
+    public async Task<(bool Ok, string Say)> SaveAsync(byte[] bytes, string name, CancellationToken ct)
+    {
+        using var form = new MultipartFormDataContent();
+        form.Add(new ByteArrayContent(bytes), "file", name);
+        try
+        {
+            using var response = await http.PostAsync("files", form, ct);
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                log.LogError("Ekko.Files refused this bot's key: check Files_TelegramKey in .env");
+                return (false, "Ekko's file store refused this bot's key, so I couldn't keep that.");
+            }
+            var saved = await response.Content.ReadFromJsonAsync<Saved>(ct);
+            return saved?.Message is { Length: > 0 } said ? (saved.Ok, said) : (false, "Ekko's file store gave an answer I couldn't read.");
+        }
+        catch (HttpRequestException)
+        {
+            return (false, "Ekko's file store isn't answering, so I couldn't keep that.");
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return (false, "Ekko's file store took too long to answer.");
+        }
+        catch (JsonException)
+        {
+            return (false, "Ekko's file store gave an answer I couldn't read.");
+        }
+    }
+}
+
 public sealed class SpeechOptions
 {
     public string Model { get; init; } = "Systran/faster-distil-whisper-small.en";

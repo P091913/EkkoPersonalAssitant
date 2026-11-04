@@ -22,14 +22,19 @@ public sealed class DeskService(HttpClient http)
 
     private sealed record Response(bool Ok, string? Message, string? Error);
 
-    public async Task<ToolResult> AddNoteAsync(string text, CancellationToken ct)
+    public Task<ToolResult> AddNoteAsync(string text, CancellationToken ct) => PostAsync("api/notes", new { text }, ct);
+
+    /// <summary>The desk finds the file in Ekko.Files by these words ("" for the newest) and opens it (DR-40).</summary>
+    public Task<ToolResult> ShowFileAsync(string name, CancellationToken ct) => PostAsync("api/files/show", new { name }, ct);
+
+    private async Task<ToolResult> PostAsync(string path, object body, CancellationToken ct)
     {
         try
         {
-            using var response = await http.PostAsJsonAsync("api/notes", new { text }, Json, ct);
+            using var response = await http.PostAsJsonAsync(path, body, Json, ct);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 return ToolResult.Failed("Your desk refused Ekko's key.");
-            // A full desk (409) or a bad note (400) comes back in the same shape, already worded for the user.
+            // A refusal (a full desk, no such file) comes back in the same shape, already worded for the user.
             return await response.Content.ReadFromJsonAsync<Response>(Json, ct) switch
             {
                 { Ok: true, Message: { } message } => ToolResult.Done(message),

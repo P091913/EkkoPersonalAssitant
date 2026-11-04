@@ -105,6 +105,7 @@ public static class EkkoServices
                 c.DefaultRequestHeaders.Add(ApiKey.Header, desk.ApiKey);
         });
         services.AddScoped<ITool, AddDeskNote>();
+        services.AddScoped<ITool, ShowDeskFile>();
 
         var ops = config.GetSection("ServerOps").Get<ServerOpsOptions>() ?? throw new InvalidOperationException("ServerOps config is missing.");
         services.AddSingleton(ops);
