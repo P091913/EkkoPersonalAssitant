@@ -410,6 +410,18 @@ Checks:
 
 Waiting: the desk's build, then "put a note on my desk: buy milk" said at the desk, end to end.
 
+**DR-43: The desk reads food and budget directly for its Today card and quick food log (applies DR-23).** A card shows calories so far, the bills left this month and the next one due. Another card shows your usual foods, logged with one tap. Options: ask the Brain, or call the services. The services, because these are fixed reads and one-tap writes with nothing to decide. Going through the Brain would add a model call to every glance, and every tap would land in the chat card. The desk is the food and budget services' second consumer, which is DR-23's rule for a service.
+- **Food:** `GET /food/usual?limit=` (1-12, default 6) lists the foods eaten most often in the last 30 days, with their current calories. Ties go to the one eaten last. A tap is `POST /food/log` with that name, and undo is the existing `POST /food/undo`. The day, log and undo answers now carry `total`, the day's calories as a number.
+- **Budget:** `GET /budget/glance` gives this month's numbers with a sentence: bills left, how much they add up to, the ending balance, and the next bill. The next bill is the unchecked one dated soonest, so an overdue bill comes first. Each glance reads the Google Sheet, so the desk refreshes it every 10 minutes at most.
+- **Keys:** `Food_DeskKey` and `Budget_DeskKey` in `.env`. The desk server holds them, never the page. **The desk's budget key is read-only** (`Api:ReadOnly`): anything but a GET gets a 403. When the desk moves to the Pi, a stolen Pi can see the budget but never change it. Food keeps one kind of key, because a wrong tap is undone in one more tap.
+
+Checks:
+- 1 food test: the order, the 30-day window, current calories, and the totals.
+- 1 budget test: counts, the next bill, overdue first, and nothing left.
+- Live: the glance read the real sheet. The desk's budget key got a 403 on a write, while the Brain's key still passed. Write checks used empty bodies, so nothing was written.
+
+Waiting: the desk's two cards.
+
 ## Resolved questions
 
 - **Speech-to-text runs on the server.** The Even Hub SDK gives plugins raw microphone audio (16 kHz PCM) with no transcription API. The page records it and sends one WAV per press to `Ekko.Glasses`, which transcribes it with speaches (DR-38).

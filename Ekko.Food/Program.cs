@@ -38,6 +38,8 @@ app.MapGet("/food/day", (string? day, FoodDiary diary) => day switch
 
 app.MapPost("/food/undo", (FoodDiary diary) => Results.Ok(diary.Undo()));
 
+app.MapGet("/food/usual", (int? limit, FoodDiary diary) => Results.Ok(diary.Usual(Math.Clamp(limit ?? 6, 1, 12))));
+
 app.MapGet("/food/foods", (string? food, FoodDiary diary) =>
     Requests.FoodProblem(food) is { } p ? Bad(p) : Results.Ok(diary.Find(food!)));
 

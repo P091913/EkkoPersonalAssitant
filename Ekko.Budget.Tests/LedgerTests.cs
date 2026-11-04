@@ -60,6 +60,21 @@ public class LedgerTests
     }
 
     [Fact]
+    public void A_glance_counts_unchecked_bills_and_names_the_soonest()
+    {
+        var glance = Ledger.Glance(November());
+        Assert.Equal(new Glance("ok", "6 bills left, $628 in all. Next: Groceries - shop 2, $150 on Nov 14. Ending balance $922.",
+            6, 628, 922, new NextBill("Groceries - shop 2", 150, new DateOnly(2026, 11, 14))), glance);
+
+        var month = November();
+        month.Rows[1] = month.Rows[1] with { Complete = false }; // rent, Nov 1, not paid yet
+        Assert.Equal("Rent", Ledger.Glance(month).Next!.Item); // overdue comes first
+
+        month.Rows.RemoveAll(r => r.Amount < 0 && !r.IsStart);
+        Assert.Equal((0, 0m, null), (Ledger.Glance(month).BillsLeft, Ledger.Glance(month).LeftToPay, Ledger.Glance(month).Next));
+    }
+
+    [Fact]
     public void A_row_named_exactly_as_said_wins_over_longer_names() => Assert.Equal([7], Found("the water bill"));
 
     [Fact]
