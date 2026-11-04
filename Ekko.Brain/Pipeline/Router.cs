@@ -24,8 +24,8 @@ public sealed class Router(StructuredCall llm)
         tv: the TV itself. Turning it on or off, opening Jellyfin on it.
         budget: money and the expenses sheet. Bills, subscriptions, paychecks, spending, the balance, what's left this month, logging an expense.
         Marking anything paid, checked off or complete is budget, even when it names a streaming service or an app ("mark netflix as paid"), and so is a bill or charge that went through or came out.
-        desk: sticky notes projected on the user's desk, not the PC. Putting a note on it ("put a note on my desk: water the plants"). A reminder at a set time is calendar.
-        food: what the user ate or drank. Logging it, taking a logged food back off ("I didn't eat the donut"), calories eaten so far, changing a food's saved calories. Money spent on food is budget.
+        desk: sticky notes projected on the user's desk, not the PC. Putting a note on it ("put a note on my desk: water the plants"), and showing a photo or PDF they sent on it ("put it on my desk"). A reminder at a set time is calendar.
+        food: what the user ate or drank. Logging it, taking back a food they didn't eat after all ("I didn't eat the cookie, take it off"), calories eaten so far, changing a food's saved calories. Money spent on food is budget.
         calendar: events, schedule, meetings, free time.
         server_ops: the home server. Containers, disk space, logs, restarts.
         chat: anything else, such as questions and small talk.

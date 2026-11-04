@@ -59,10 +59,12 @@ public class TelegramBotTests
         _bot = new TelegramBot(new TelegramApi(options, _apiLogs, _http),
             new BrainClient(new HttpClient(_http) { BaseAddress = new Uri("http://brain/") }, new Logs<BrainClient>()),
             new Speech(new HttpClient(_http) { BaseAddress = new Uri("http://speech/") }, new SpeechOptions(), new Logs<Speech>()),
+            new FilesClient(new HttpClient(_http) { BaseAddress = new Uri("http://files/") }, new Logs<FilesClient>()),
             options, _clock, _botLogs);
         _http.Respond = url => url switch
         {
             "http://brain/message" => FakeHttp.Json("""{"text":"Volume up.","requestId":"r1"}"""),
+            "http://files/files" => FakeHttp.Json("""{"ok":true,"message":"Saved “photo.jpg”.","file":{"id":"0123456789abcdef"}}""", HttpStatusCode.Created),
             "http://speech/v1/audio/transcriptions" => FakeHttp.Json("""{"text":" turn it up "}"""),
             _ when url.EndsWith("/getFile") => FakeHttp.Json("""{"ok":true,"result":{"file_path":"voice/file_1.oga"}}"""),
             _ when url.Contains("/file/bot") => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) },
@@ -132,6 +134,51 @@ public class TelegramBotTests
 
         Assert.DoesNotContain(_http.Requests, r => r.Url.StartsWith("http://brain/"));
         Assert.EndsWith("That's longer than Ekko takes in one message. Try it in shorter pieces.", _http.Sent("sendMessage").Single());
+    }
+
+    private JsonObject WithFile(string kind, string file, string? caption = null)
+    {
+        var message = Message();
+        message[kind] = JsonNode.Parse(file);
+        message["caption"] = caption;
+        return message;
+    }
+
+    [Fact]
+    public async Task A_photo_is_kept_then_its_caption_goes_to_Ekko()
+    {
+        await _bot.HandleAsync(WithFile("photo", """[{"file_id":"small","file_size":900},{"file_id":"big","file_size":90000}]""", "turn it up"),
+            CancellationToken.None);
+
+        Assert.Contains("\"file_id\":\"big\"", _http.Requests.Single(r => r.Url.EndsWith("/getFile")).Body);
+        Assert.Contains("filename=photo.jpg", _http.Requests.Single(r => r.Url == "http://files/files").Body);
+        Assert.Contains("\"text\":\"turn it up\"", BrainBody());
+        Assert.Equal(["Saved “photo.jpg”.\n\nVolume up."], _http.Sent("sendMessage"));
+    }
+
+    [Fact]
+    public async Task A_file_the_store_refuses_is_said_and_its_caption_is_not_acted_on()
+    {
+        _http.Respond = url => url == "http://files/files"
+            ? FakeHttp.Json("""{"ok":false,"message":"I can only keep photos and PDFs, and that file is neither."}""", HttpStatusCode.BadRequest)
+            : url.EndsWith("/getFile") ? FakeHttp.Json("""{"ok":true,"result":{"file_path":"documents/file_2.docx"}}""")
+            : url.Contains("/file/bot") ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) }
+            : FakeHttp.Json("""{"ok":true,"result":{}}""");
+
+        await _bot.HandleAsync(WithFile("document", """{"file_id":"d","file_name":"notes.docx","file_size":3}""", "put this on my desk"),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(_http.Requests, r => r.Url.StartsWith("http://brain/"));
+        Assert.Equal(["I can only keep photos and PDFs, and that file is neither."], _http.Sent("sendMessage"));
+    }
+
+    [Fact]
+    public async Task A_file_over_Telegrams_download_limit_is_never_fetched()
+    {
+        await _bot.HandleAsync(WithFile("document", """{"file_id":"d","file_name":"scan.pdf","file_size":30000000}"""), CancellationToken.None);
+
+        Assert.DoesNotContain(_http.Requests, r => r.Url.EndsWith("/getFile") || r.Url.StartsWith("http://files/"));
+        Assert.Equal(["That file is over 20 MB, more than Telegram lets me download."], _http.Sent("sendMessage"));
     }
 
     [Fact]

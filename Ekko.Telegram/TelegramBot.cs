@@ -8,11 +8,13 @@ namespace Ekko.Telegram;
 /// connection is outgoing and nothing here is opened to the internet. Only user ids in Telegram:AllowedUsers get an
 /// answer; Telegram says who sent each message, so that can't be faked.
 /// </summary>
-public sealed class TelegramBot(TelegramApi telegram, BrainClient brain, Speech speech, TelegramOptions options,
+public sealed class TelegramBot(TelegramApi telegram, BrainClient brain, Speech speech, FilesClient files, TelegramOptions options,
     TimeProvider clock, ILogger<TelegramBot> log) : BackgroundService
 {
     private const int PollSeconds = 30;
     private const int MaxVoiceSeconds = 120;
+    /// <summary>The most a bot may download from Telegram.</summary>
+    private const long MaxFileBytes = 20 * 1024 * 1024;
 
     /// <summary>A message older than this was sent while the PC was off. Acting on it now could surprise ("lock the pc").</summary>
     public static readonly TimeSpan Stale = TimeSpan.FromMinutes(10);
@@ -100,7 +102,8 @@ public sealed class TelegramBot(TelegramApi telegram, BrainClient brain, Speech 
             return;
         }
 
-        var text = (message["text"]?.ToString() ?? "").Trim();
+        // A photo or document carries its words as a caption.
+        var text = (message["text"] ?? message["caption"])?.ToString().Trim() ?? "";
         if (text == "/start")
         {
             await telegram.SendAsync(chat, "Hi! Text me or send a voice note, the way you'd talk to Ekko on the deck.", ct);
@@ -108,10 +111,34 @@ public sealed class TelegramBot(TelegramApi telegram, BrainClient brain, Speech 
         }
         await telegram.TypingAsync(chat, ct);
         var reply = message["voice"] is JsonObject voice ? await VoiceAsync(voice, chat, ct)
-            : text.Length == 0 ? "I can read text and voice notes."
-            : text.Length > BrainClient.MaxText ? $"That's longer than Ekko takes in one message ({BrainClient.MaxText} characters). Try it shorter."
-            : await brain.AskAsync(text, chat, ct);
+            : Attachment(message) is { } file ? await FileAsync(file, text, chat, ct)
+            : text.Length == 0 ? "I can read text and voice notes, and keep photos and PDFs."
+            : await AskAsync(text, chat, ct);
         await telegram.SendAsync(chat, reply, ct);
+    }
+
+    private Task<string> AskAsync(string text, long chat, CancellationToken ct) =>
+        text.Length > BrainClient.MaxText
+            ? Task.FromResult($"That's longer than Ekko takes in one message ({BrainClient.MaxText} characters). Try it shorter.")
+            : brain.AskAsync(text, chat, ct);
+
+    /// <summary>A photo (its largest size; Telegram sends them as JPEG with no name) or a document.</summary>
+    private static (string Id, string Name, long Size)? Attachment(JsonObject message) =>
+        message["photo"] is JsonArray { Count: > 0 } sizes && sizes[sizes.Count - 1] is JsonObject biggest
+            ? (biggest["file_id"]?.ToString() ?? "", "photo.jpg", biggest["file_size"]?.GetValue<long>() ?? 0)
+            : message["document"] is JsonObject document
+                ? (document["file_id"]?.ToString() ?? "", document["file_name"]?.ToString() ?? "file", document["file_size"]?.GetValue<long>() ?? 0)
+                : null;
+
+    /// <summary>Kept in Ekko.Files, which decides what it takes. A caption goes to Ekko only once the file is kept: it's likely about the file.</summary>
+    private async Task<string> FileAsync((string Id, string Name, long Size) file, string caption, long chat, CancellationToken ct)
+    {
+        if (file.Size > MaxFileBytes)
+            return "That file is over 20 MB, more than Telegram lets me download.";
+        if (file.Id.Length == 0 || await telegram.DownloadAsync(file.Id, ct) is not { } bytes)
+            return "Sorry, I couldn't download that file.";
+        var (kept, said) = await files.SaveAsync(bytes, file.Name, ct);
+        return !kept || caption.Length == 0 ? said : $"{said}\n\n{await AskAsync(caption, chat, ct)}";
     }
 
     private async Task<string> VoiceAsync(JsonObject voice, long chat, CancellationToken ct)

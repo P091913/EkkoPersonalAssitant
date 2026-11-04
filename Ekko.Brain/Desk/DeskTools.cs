@@ -13,8 +13,8 @@ public sealed record AddDeskNoteArgs(
 [RiskClass(Risk.Reversible)]
 public sealed class AddDeskNote(DeskService desk)
     : Tool<AddDeskNoteArgs>("add_desk_note", Domain.Desk,
-        "Put a sticky note on the user's projected desk: 'put a note on my desk: call mom', 'stick a note on my desk saying buy milk', " +
-        "'add a desk note to email Sam'.")
+        "Put a sticky note with the user's words on their projected desk: 'put a note on my desk: call mom', " +
+        "'stick a note on my desk saying buy milk', 'add a desk note to email Sam'.")
 {
     /// <summary>The desk's own limit. Checked here too, because a long note is the user's words, not a model mistake to retry.</summary>
     public const int MaxLength = 200;
@@ -27,4 +27,22 @@ public sealed class AddDeskNote(DeskService desk)
     };
 
     protected override Task<ToolResult> RunAsync(AddDeskNoteArgs args, CancellationToken ct) => desk.AddNoteAsync(args.Text.Trim(), ct);
+}
+
+public sealed record ShowDeskFileArgs(
+    [property: MaxLength(60), Description("Whenever the user names the file, the words that name it: from its name ('invoice', 'lease') or its kind ('photo', 'pdf'). Leave it out only when they don't name it: 'put it on my desk', 'pull that up on the desk'.")]
+    string? Name = null);
+
+/// <summary>
+/// Opens a photo or PDF on the desk: one the user sent Ekko (DR-40) or saved in Downloads (DR-41), both found through
+/// Ekko.Files. Reversible: closing the card puts it away, and the file stays. Which file the words mean is the store's
+/// call, not the model's.
+/// </summary>
+[RiskClass(Risk.Reversible)]
+public sealed class ShowDeskFile(DeskService desk)
+    : Tool<ShowDeskFileArgs>("show_file_on_desk", Domain.Desk,
+        "Open a photo or PDF the user sent Ekko or downloaded on their projected desk: 'put it on my desk', 'show the invoice on my desk', " +
+        "'pull up the photo I sent on my desk', 'pull that up on the desk'.")
+{
+    protected override Task<ToolResult> RunAsync(ShowDeskFileArgs args, CancellationToken ct) => desk.ShowFileAsync(args.Name?.Trim() ?? "", ct);
 }
