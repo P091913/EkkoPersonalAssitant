@@ -89,6 +89,25 @@ public static partial class Ledger
         return string.Join(" ", parts);
     }
 
+    /// <summary>The numbers <see cref="Status"/> reads out, kept as numbers. Bills are what Status counts: unchecked money out.</summary>
+    public static Glance Glance(Month month)
+    {
+        var bills = month.Rows.Where(r => !r.IsStart && !r.Complete && r.Amount < 0).ToList();
+        var left = -bills.Sum(r => r.Amount!.Value);
+        var next = bills.OrderBy(r => r.Date ?? DateOnly.MaxValue).FirstOrDefault(); // stable: same date keeps sheet order
+        var ending = month.Rows.LastOrDefault(r => r.Balance is not null)?.Balance;
+        var parts = new List<string>
+        {
+            bills.Count == 0 ? "Every bill is checked off." : $"{bills.Count} {(bills.Count == 1 ? "bill" : "bills")} left, {Money(left)} in all.",
+        };
+        if (next is not null)
+            parts.Add($"Next: {next.Item}, {Money(-next.Amount!.Value)}{On(next.Date)}.");
+        if (ending is { } e)
+            parts.Add($"Ending balance {Money(e)}.");
+        return new Glance("ok", string.Join(" ", parts), bills.Count, left, ending,
+            next is null ? null : new NextBill(next.Item, -next.Amount!.Value, next.Date));
+    }
+
     /// <summary>
     /// The unchecked rows a request means. By name when the words name something: every word said starts a word of the
     /// row's item ("water", "verizon bill"); an amount alongside is then what it really came to, not part of the lookup.

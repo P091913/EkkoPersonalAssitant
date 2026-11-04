@@ -9,6 +9,13 @@ public sealed record Candidate(string Tab, int Row, string Item, decimal Amount,
 /// <param name="Message">A sentence ready to read out.</param>
 public sealed record Answer(string Status, string Message, IReadOnlyList<Candidate>? Candidates = null);
 
+/// <summary>This month as numbers for a screen (the desk's Today card), with the same status and sentence as an Answer.</summary>
+/// <param name="LeftToPay">Dollars, positive: the unchecked bills added up.</param>
+/// <param name="Next">The unchecked bill dated soonest, overdue ones first.</param>
+public sealed record Glance(string Status, string Message, int BillsLeft, decimal LeftToPay, decimal? EndingBalance, NextBill? Next);
+
+public sealed record NextBill(string Item, decimal Amount, DateOnly? Date);
+
 /// <param name="Amount">Dollars, positive. Finds the row by amount when <paramref name="Item"/> names nothing.</param>
 public sealed record FindRequest(string? Item, decimal? Amount);
 
@@ -35,6 +42,12 @@ public sealed class BudgetBook(GoogleSheets sheets, TimeProvider clock, ILogger<
             ? new Answer("ok", Ledger.Status(loaded))
             : new Answer("not_found", $"There's no {name} tab on the expenses sheet.");
     }
+
+    /// <summary>This month only: a glance is about now.</summary>
+    public async Task<Glance> GlanceAsync(CancellationToken ct) =>
+        await LoadAsync(MonthName(Today), ct) is { } month
+            ? Ledger.Glance(month)
+            : new Glance("not_found", $"There's no {MonthName(Today)} tab on the expenses sheet yet.", 0, 0, null, null);
 
     /// <summary>This month's unchecked rows first; last month's if nothing this month fits (a late bill).</summary>
     public async Task<Answer> FindAsync(string? item, decimal? amount, CancellationToken ct)

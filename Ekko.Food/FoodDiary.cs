@@ -14,7 +14,12 @@ public sealed record FoodRequest(string? Food, double? CaloriesEach);
 /// <param name="Message">A sentence ready to read out.</param>
 /// <param name="Unknown">With "unknown": the foods not on the list, exactly as they were sent.</param>
 /// <param name="Name">With "found": the food as the list names it, and its calories for one.</param>
-public sealed record Answer(string Status, string Message, IReadOnlyList<string>? Unknown = null, string? Name = null, double? CaloriesEach = null);
+/// <param name="Total">With a day, a log or an undo: that day's calories as a number, for screens.</param>
+/// <param name="Foods">With usual foods: the list, most eaten first.</param>
+public sealed record Answer(string Status, string Message, IReadOnlyList<string>? Unknown = null, string? Name = null, double? CaloriesEach = null,
+    double? Total = null, IReadOnlyList<UsualFood>? Foods = null);
+
+public sealed record UsualFood(string Name, double CaloriesEach);
 
 /// <summary>
 /// The food list and the diary, in one SQLite file. A food is saved once, with its calories for one of it. An entry keeps
@@ -76,7 +81,8 @@ public sealed class FoodDiary
                 logged.Add(entry);
             }
             Execute(db, "COMMIT");
-            return new Answer("ok", $"Logged {Said(logged)}: {FoodWords.Calories(logged.Sum(e => e.Calories))}. {Total(db, day)} today.");
+            var total = Total(db, day);
+            return new Answer("ok", $"Logged {Said(logged)}: {FoodWords.Calories(logged.Sum(e => e.Calories))}. {FoodWords.Calories(total)} today.", Total: total);
         }
     }
 
@@ -88,11 +94,12 @@ public sealed class FoodDiary
             var when = daysAgo == 0 ? "today" : "yesterday";
             var entries = Entries(db, "day = $day", ("$day", Day(_clock.GetLocalNow().AddDays(-daysAgo))));
             if (entries.Count == 0)
-                return new Answer("empty", $"Nothing logged {when}.");
+                return new Answer("empty", $"Nothing logged {when}.", Total: 0);
             var listed = entries.Take(ListedFoods).Select(e => FoodWords.Amount(e.Name, e.Quantity)).ToList();
             if (entries.Count > ListedFoods)
                 listed.Add($"{entries.Count - ListedFoods} more");
-            return new Answer("ok", $"{FoodWords.Calories(entries.Sum(e => e.Calories))} {when}: {FoodWords.Join(listed)}.");
+            var total = entries.Sum(e => e.Calories);
+            return new Answer("ok", $"{FoodWords.Calories(total)} {when}: {FoodWords.Join(listed)}.", Total: total);
         }
     }
 
@@ -104,12 +111,39 @@ public sealed class FoodDiary
             using var db = Open();
             var day = Day(_clock.GetLocalNow());
             if (Scalar(db, "SELECT MAX(log) FROM entries WHERE day = $day", ("$day", day)) is not long log)
-                return new Answer("empty", "Nothing's logged today to undo.");
+                return new Answer("empty", "Nothing's logged today to undo.", Total: 0);
             var removed = Entries(db, "log = $log", ("$log", log));
             Execute(db, "DELETE FROM entries WHERE log = $log", ("$log", log));
-            return new Answer("ok", $"Took off {Said(removed)}. {Total(db, day)} today.");
+            var total = Total(db, day);
+            return new Answer("ok", $"Took off {Said(removed)}. {FoodWords.Calories(total)} today.", Total: total);
         }
     }
+
+    /// <summary>
+    /// The foods on the list eaten most often in the last <see cref="UsualDays"/> days, for one-tap logging (the desk's quick
+    /// food log). Ties go to the one eaten most recently.
+    /// </summary>
+    public Answer Usual(int count)
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            // Entries carry the list's name for a food (Log writes it), so the join finds the food's current calories.
+            using var command = Command(db, """
+                SELECT f.name, f.calories FROM entries e JOIN foods f ON f.name = e.name
+                WHERE e.day >= $since GROUP BY f.key ORDER BY COUNT(*) DESC, MAX(e.id) DESC LIMIT $count
+                """, ("$since", Day(_clock.GetLocalNow().AddDays(1 - UsualDays))), ("$count", count));
+            using var reader = command.ExecuteReader();
+            var foods = new List<UsualFood>();
+            while (reader.Read())
+                foods.Add(new UsualFood(reader.GetString(0), reader.GetDouble(1)));
+            return foods.Count == 0
+                ? new Answer("empty", $"Nothing logged in the last {UsualDays} days.", Foods: foods)
+                : new Answer("ok", $"You usually have {FoodWords.Join(foods.Select(f => f.Name).ToList())}.", Foods: foods);
+        }
+    }
+
+    public const int UsualDays = 30;
 
     /// <summary>A food on the list, so a change can be read back against the number it replaces.</summary>
     public Answer Find(string food)
@@ -140,8 +174,8 @@ public sealed class FoodDiary
 
     private static string Said(List<Entry> entries) => FoodWords.Join(entries.Select(e => FoodWords.Amount(e.Name, e.Quantity)).ToList());
 
-    private static string Total(SqliteConnection db, string day) =>
-        FoodWords.Calories(Convert.ToDouble(Scalar(db, "SELECT COALESCE(SUM(calories), 0) FROM entries WHERE day = $day", ("$day", day))));
+    private static double Total(SqliteConnection db, string day) =>
+        Convert.ToDouble(Scalar(db, "SELECT COALESCE(SUM(calories), 0) FROM entries WHERE day = $day", ("$day", day)));
 
     // Days are the house's (the container's TZ), so a late snack counts for the day it was eaten in.
     private static string Day(DateTimeOffset local) => local.ToString("yyyy-MM-dd");

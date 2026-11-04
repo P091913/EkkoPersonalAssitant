@@ -109,6 +109,31 @@ public class FoodDiaryTests
     }
 
     [Fact]
+    public void Usual_foods_are_the_most_eaten_lately_with_their_current_calories()
+    {
+        Assert.Equal("empty", _diary.Usual(6).Status);
+        Log(new LogItem("cake", CaloriesEach: 400, Save: true)); // eaten 3 times, but too long ago
+        Log(new LogItem("cake"));
+        Log(new LogItem("cake"));
+        _clock.Now = _clock.Now.AddDays(UsualWindow);
+        Log(new LogItem("toast", CaloriesEach: 80, Save: true));
+        Log(new LogItem("egg", 2, CaloriesEach: 70, Save: true), new LogItem("coffee", CaloriesEach: 5, Save: true));
+        Log(new LogItem("egg"));
+        _diary.SetCalories("eggs", 75);
+
+        var usual = _diary.Usual(6);
+        // Eggs twice; toast and coffee once each, coffee more recently. Quantity doesn't count, only how often.
+        Assert.Equal([new UsualFood("egg", 75), new UsualFood("coffee", 5), new UsualFood("toast", 80)], usual.Foods);
+        Assert.Equal([new UsualFood("egg", 75)], _diary.Usual(1).Foods);
+
+        Assert.Equal(295, _diary.Day(0).Total); // 80 + 2 x 70 + 5 + 70: logged eggs keep the old 70
+        Assert.Equal(370, Log(new LogItem("egg")).Total);
+        Assert.Equal(295, _diary.Undo().Total);
+    }
+
+    private const int UsualWindow = FoodDiary.UsualDays;
+
+    [Fact]
     public void A_long_day_lists_the_first_foods_and_counts_the_rest()
     {
         for (var i = 0; i < 10; i++)

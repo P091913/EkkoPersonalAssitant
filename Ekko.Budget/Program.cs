@@ -11,6 +11,8 @@ if (sheet.SpreadsheetId.Length == 0 || sheet.KeyFile.Length == 0)
 var keys = builder.Configuration.GetSection("Api:Keys").Get<Dictionary<string, string>>() ?? [];
 if (keys.Count == 0 && !builder.Environment.IsDevelopment())
     throw new InvalidOperationException("Api:Keys needs at least one client key outside Development: this service writes to your finances.");
+// Clients that only read (the desk's Today card): their key can't change the sheet even if the device holding it is taken.
+var readOnly = builder.Configuration.GetSection("Api:ReadOnly").Get<string[]>() ?? [];
 
 builder.Services.AddSingleton(sheet);
 builder.Services.AddSingleton(TimeProvider.System);
@@ -29,11 +31,19 @@ app.Use(async (context, next) =>
         await context.Response.WriteAsJsonAsync(new Answer("error", "Missing or wrong X-Api-Key."));
         return;
     }
+    if (readOnly.Contains(client) && !HttpMethods.IsGet(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new Answer("error", "This key can only read the budget."));
+        return;
+    }
     await next();
 });
 
 app.MapGet("/budget/status", (string? month, BudgetBook book, CancellationToken ct) =>
     Requests.MonthProblem(month) is { } p ? Bad(p) : Run(book.StatusAsync(month, ct)));
+
+app.MapGet("/budget/glance", (BudgetBook book, CancellationToken ct) => Run(book.GlanceAsync(ct)));
 
 app.MapPost("/budget/bills/find", (FindRequest r, BudgetBook book, CancellationToken ct) =>
     Requests.Problem(r) is { } p ? Bad(p) : Run(book.FindAsync(r.Item, r.Amount, ct)));
@@ -49,7 +59,7 @@ app.Run();
 // Every outcome is the same JSON shape with a sentence to read out; only bad requests and Google failures change the status code.
 static Task<IResult> Bad(string problem) => Task.FromResult(Results.BadRequest(new Answer("error", problem)));
 
-static async Task<IResult> Run(Task<Answer> work)
+static async Task<IResult> Run<T>(Task<T> work)
 {
     try
     {

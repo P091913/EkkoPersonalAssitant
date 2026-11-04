@@ -61,6 +61,8 @@ services:
     # Only what this service needs, picked out of .env: it never sees the Anthropic key or other services' keys.
     environment:
       Api__Keys__brain: ${Budget__ApiKey:?set Budget__ApiKey in .env}
+      Api__Keys__desk: ${Budget_DeskKey:?set Budget_DeskKey in .env}   # the desk's Today card (DR-43)
+      Api__ReadOnly__0: desk                                           # ...which may only read
       Sheet__SpreadsheetId: ${Budget_SpreadsheetId:?set Budget_SpreadsheetId in .env}
       Sheet__KeyFile: /run/secrets/google-sheets
       TZ: America/Chicago      # a new row is dated by the house's day, not UTC's
@@ -79,6 +81,7 @@ services:
     # Only its own key from .env: it holds no other secrets.
     environment:
       Api__Keys__brain: ${Food__ApiKey:?set Food__ApiKey in .env}
+      Api__Keys__desk: ${Food_DeskKey:?set Food_DeskKey in .env}       # the desk's Today card and quick food log (DR-43)
       TZ: America/Chicago      # "today" is the house's day, not UTC's
     volumes:
       # A Docker volume, not a folder on C:. SQLite needs file locks that Windows bind mounts don't reliably give.
