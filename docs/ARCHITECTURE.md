@@ -24,7 +24,7 @@ Everything currently runs on one Windows PC in Docker Desktop.
 | jellyfin | http://localhost:8096 | Media server. Echo never calls it directly; tvremote does. Only container Echo may restart. |
 | speaches | http://localhost:8000 | OpenAI-compatible speech server (faster-whisper). Transcribes Telegram voice notes (DR-37), the glasses (DR-38) and the desk's Ask Ekko (DR-42). Each caller has its own URL and model setting. |
 | ekko-desk | http://localhost:8081, the Pi from its phase 4 | The projected desk (DR-39), its own repo. Owns the sticky notes Ekko adds. |
-| Ollama | http://localhost:11434/v1 | Local model `qwen3.5:9b`, OpenAI-compatible. Listens on 0.0.0.0. From a container use `host.docker.internal`. |
+| Ollama | http://localhost:11434/v1 | Local model `qwen3.5:4b` (DR-48), OpenAI-compatible. Listens on 0.0.0.0. From a container use `host.docker.internal`. |
 | Claude API | https://api.anthropic.com/v1/messages | Key in `ANTHROPIC_API_KEY`. |
 
 ## Layered architecture
@@ -36,7 +36,7 @@ CHANNELS   Glasses (G2 plugin) | Phone app | Telegram | Browser app
              speech in; text on the lens, speech on the phone
                  | text + conversation ID          ^ replies and push alerts
                  v                                  |
-BRAIN      Pending state -> Fast path (no model) -> Router (Qwen 9B, 8 domains) -> Domain handlers (tools + risk gate)
+BRAIN      Pending state -> Fast path (no model) -> Router (Qwen 4B, 8 domains) -> Domain handlers (tools + risk gate)
            State and trace store (pending questions, saved runs, JSONL trace)
            Server-ops agent (Claude agent loop) <- the only full agent loop
                  | validated tool calls
@@ -112,11 +112,11 @@ Each step uses the cheapest option that does it reliably, and logged failures de
 | Step | Default | Escalate to | Why |
 | --- | --- | --- | --- |
 | Fast-path commands | No model (C# table) | Router | Instant, free, and can't hallucinate |
-| Routing | Qwen 9B, JSON schema output | Claude Haiku | One choice from a fixed list suits a small model |
-| Argument extraction | Qwen 9B, per-domain schema | Claude Haiku | Short, structured, and local |
+| Routing | Qwen 4B, JSON schema output | Claude Haiku | One choice from a fixed list suits a small model |
+| Argument extraction | Qwen 4B, per-domain schema | Claude Haiku | Short, structured, and local |
 | Server-ops diagnosis | Claude (Haiku, then Sonnet) | none | Multi-step reasoning over logs |
-| General chat | Qwen 9B | Claude | Low stakes |
-| Routing, extraction and chat from a session's 6th message | Claude Haiku | Qwen 9B | Long history reads better on Claude (DR-34) |
+| General chat | Qwen 4B | Claude | Low stakes |
+| Routing, extraction and chat from a session's 6th message | Claude Haiku | Qwen 4B | Long history reads better on Claude (DR-34) |
 | Calories for a food not on the list | Claude Sonnet | Claude Haiku | Recall of published figures; once per food, confirmed by the user (DR-35) |
 
 - Every model call logs its input, output, latency, and whether validation passed.
@@ -421,6 +421,26 @@ Checks:
 - Live: the glance read the real sheet. The desk's budget key got a 403 on a write, while the Brain's key still passed. Write checks used empty bodies, so nothing was written.
 
 Waiting: the desk's two cards.
+
+*DR-48 was decided on Nov 11, 2026. It's numbered after DR-44 to DR-47, which were still on another branch.*
+
+**DR-48: The local model is Qwen 3.5 4B, and the evals grow to steer it (changes DR-5's model).** This was the user's call: a lighter model, made better over time by adding an eval case for each miss and tuning prompts against them. Options: keep the 9B, the 4B, or the 2B. The 9B and 4B ran the same 95 cases back to back:
+
+| | 9B | 4B |
+| --- | --- | --- |
+| End to end | 91/95 | 85/95 |
+| Routing | 87/88 | 84/88 |
+| Extraction | 72/74 | 66/72 |
+| p50, route / extract | 0.8 s / 0.8 s | 0.7 s / 0.6 s |
+| GPU memory | 5.6 GB | 3.1 GB |
+
+- Neither model retried or escalated: every answer passed its schema. So the 4B's misses are wrong answers that look right, which the Haiku fallback never sees.
+- The 4B's new misses: "the car insurance finally went through, it was like 190" became `add_expense` instead of `mark_bill_paid`, "restart jellyfin" went to tv, and "what window do I have open" and "I'm really looking forward to Scooby-Doo" went to chat. Budget writes are `WriteConfirm`, so the first one is read back before anything is saved.
+- The 2B has no score: its run was stopped while it loaded, when the PC ran low on memory.
+- A cold load didn't get faster (218 s for the 4B, 88 s for the 9B, in the same run). Load time comes from ROCm, not model size.
+- Switching back is one line, `Llm:Clients:qwen:Model`.
+
+*Revisit if* a step keeps missing real messages after its prompt is tuned: move that step to the 9B or to Haiku.
 
 ## Resolved questions
 

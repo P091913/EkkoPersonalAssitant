@@ -105,10 +105,10 @@ Each step uses the cheapest option that does it reliably, and logged failures de
 | Step | Default | Escalate to | Why |
 | --- | --- | --- | --- |
 | Fast-path commands | No model (C# table) | Router | Instant, free, and can't hallucinate |
-| Routing | Qwen 9B, JSON schema output | Claude Haiku | One choice from a fixed list suits a small model |
-| Argument extraction | Qwen 9B, per-domain schema | Claude Haiku | Short, structured, and local |
+| Routing | Qwen 4B, JSON schema output | Claude Haiku | One choice from a fixed list suits a small model |
+| Argument extraction | Qwen 4B, per-domain schema | Claude Haiku | Short, structured, and local |
 | Server-ops diagnosis | Claude (Haiku, then Sonnet) | none | Multi-step reasoning over logs |
-| General chat | Qwen 9B | Claude | Low stakes |
+| General chat | Qwen 4B | Claude | Low stakes |
 
 - Every model call logs its input, output, latency, and whether validation passed.
 - When Qwen's output fails schema validation, retry once with the error message, then escalate to Claude.
