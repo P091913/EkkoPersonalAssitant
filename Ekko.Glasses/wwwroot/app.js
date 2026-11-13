@@ -8,6 +8,9 @@ const $ = id => document.getElementById(id);
 const lens = await openLens($('screen'), $('controls'));
 const MAX_SECONDS = 30;
 
+// pack.ps1 fills this in for the installed app, which Ekko.Glasses doesn't serve. Empty here means same origin.
+const SERVER = '';
+
 // The page's key (Glasses_PageKey): typed once on the phone below, kept by the Even app. Never in a link.
 let key = await lens.get('ekko.glassesKey');
 
@@ -77,7 +80,7 @@ async function ask(said, turn = ++talk.turn) {
 /** The JSON answer, or { error } with a sentence for the lens. */
 async function call(path, body, type) {
   try {
-    const res = await fetch(path, { method: 'POST', headers: { 'X-Api-Key': key, ...(type ? { 'Content-Type': type } : {}) }, body });
+    const res = await fetch(SERVER + path, { method: 'POST', headers: { 'X-Api-Key': key, ...(type ? { 'Content-Type': type } : {}) }, body });
     if (res.status === 401) return { error: 'The glasses key was refused. Set it again on the phone.' };
     return await res.json();
   } catch {
@@ -97,7 +100,8 @@ lens.onInput(({ kind }) => {
     if (talk.phase === 'thinking') return; // Ekko already has it; the answer still comes
     return lens.exit(); // the only page: its double tap raises the system's exit dialog
   }
-  if (kind === 'exit' || kind === 'closed') cancel();
+  // Only ever close the mic: the system menu sends these too, and a reply on the lens should survive it.
+  if ((kind === 'exit' || kind === 'closed') && talk.phase === 'listening') cancel();
 });
 
 // ── the phone side: the key, typing instead of talking, and the lens as drawn ──────────────────────────

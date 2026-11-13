@@ -316,7 +316,7 @@ Waiting for the hardware:
 - filtering out other people's voices (0.0.16 reports `speakerRole`);
 - Telegram notifications on the lens.
 
-*Revisit when* the glasses arrive.
+The page loaded on the real G2 from a QR scan and worked (Nov 9, 2026), which answers the first two. DR-44 covers how it's installed. The rest are still open.
 
 *DR-39 was decided while planning the projected desk (Nov 3, 2026). The desk is its own repo, ekko-desk, whose PLAN.md has the rest.*
 
@@ -421,6 +421,67 @@ Checks:
 - Live: the glance read the real sheet. The desk's budget key got a 403 on a write, while the Brain's key still passed. Write checks used empty bodies, so nothing was written.
 
 Waiting: the desk's two cards.
+
+*DR-44 was decided after the glasses arrived (Nov 9, 2026).*
+
+**DR-44: Ekko on the G2 is installed as an Even Hub app (applies DR-38).** A QR session is for testing: it takes a scan to open, and Even's docs warn of a blank screen after the phone backgrounds. Options: keep scanning, or package the page. It's packaged, and the page stays plain JavaScript, so `wwwroot` is the build folder and there's no build step.
+- **The package:** `Ekko.Glasses/pack.ps1` builds `bin/ekko.ehpk` from `app.json` and `wwwroot`. The manifest asks for the network and the G2 mic.
+- **The tailnet address:** the script fills it into the manifest's whitelist and the page's `SERVER`, because this repo is public. The copy the service hosts keeps `SERVER` empty, so the QR session and the preview still call their own origin.
+- **CORS:** the installed page isn't served by `Ekko.Glasses`, so its calls are cross-origin. The service allows `POST` and any header from any origin, ahead of the key check, because a preflight never carries the key. It's any origin because Even doesn't document the one it uses. The key is a header, not a cookie, so another site's page still gets a 401.
+- **Install:** upload the package to the Even Hub portal under Builds, promote it to Beta, and add yourself as a tester. Then install it from the Beta tester section of the phone app.
+- **The system menu:** Even sends foreground exit events for its menu too, so those only close the mic now and no longer clear the lens.
+
+Checks:
+- Live: preflights to `/ask` and `/hear` got a 204 with the CORS headers. A POST with no key or the wrong key still got a 401.
+- The address is only in the built package, and in nothing git tracks.
+
+Waiting: the first install, including whether Even accepts a Tailscale address in the whitelist.
+
+**DR-45: A separate G2 app reads the budget glance with its own read-only key (applies DR-43).** A second glasses app, not `Ekko.Glasses`, shows the budget on the lens. Options: ask the Brain, or call the service. The service, for DR-43's reasons: `GET /budget/glance` already returns what the lens shows, so there's nothing to decide. The app is the budget service's third client, after the Brain and the desk.
+- **Key:** `Budget_GlassesKey` in `.env`. It's the app's own key, so it can be revoked alone. It started read-only like the desk's; DR-46 lets it check bills off.
+- **CORS:** the app runs in the Even app's WebView, so its calls are cross-origin. Budget allows `GET` with `X-Api-Key` from any origin, ahead of the key check, as `Ekko.Glasses` does (DR-44). A preflight is answered before the key check, so it never counts as a write either. The key is a header, not a cookie, so another site's page still gets a 401.
+- **Reach:** `tailscale serve --bg --https=8445 http://127.0.0.1:5080` puts the service on the tailnet with HTTPS. Port 5080 stays published as before: the Brain reaches it through Docker's host address, and the desk will need it from the Pi.
+- **Two more numbers in the glance, added alongside the rest:** existing fields and the message are unchanged, because the desk shows them. `lowest` is the row `Status` already reads out as the lowest balance. `untilPayday` is the next unchecked paycheck and the unchecked bills dated before it. Overdue bills count. Bills on the paycheck's own day don't, because the sheet lists them under it. Undated bills go last. Once this month's paychecks are all checked off, it uses next month's first, after the rest of this month's bills. If neither tab has one, every unchecked bill counts and the paycheck is null.
+- **A paycheck is money in named "paycheck",** not just any money in. The sheet also gets stipends, bonuses, cashback, eBay sales and a 401k deposit, and December's stipend is dated before its first paycheck.
+
+Checks:
+- 4 tests run the real CORS and key check on loopback, with stand-in endpoints. A preflight without a key gets a 204 and the CORS header, the glasses key reads, a write with it gets a 403, and no key or a wrong one still gets a 401.
+- 4 Ledger tests: the low, negative included; the bills before this month's paycheck (overdue in, its own day out, undated last); next month's paycheck; and no paycheck anywhere.
+- Live over the tailnet's HTTPS address: the same, plus a real glance. The Brain's key still passed a write's key check, and the desk's still got a 403. Write checks used empty bodies, so nothing was written.
+
+Waiting: the glasses app showing the glance on the lens.
+
+**DR-46: Each budget key can have its own list of writes (DR-22's revisit, applied to the budget).** The glasses app checks off a bill it shows: tap, confirm, done. Options: a code exception for the glasses, a new endpoint that only checks bills off, or a list of writes per key. The list, as DR-22 planned. `Api:Writes:<client>` names the writes a client may make, such as `POST /budget/bills/paid`, and that client may also read anything. A client in `Api:ReadOnly` only reads. Any other client, like the Brain, can do anything. A write that isn't on the list gets a 403, so a route added later starts closed.
+- **Glasses:** read, and check bills off through the existing `POST /budget/bills/paid`, with its re-read and item check. It may not send `amount`, because changing what a bill came to stays with the Brain. The check reads the body with the endpoint's own type and JSON options, so `"Amount"` is refused too. A lost phone can check a bill off, which shows on the sheet and is undone by unticking the box. It can't add rows or change amounts.
+- **Desk:** still read-only. **Brain:** unchanged.
+- **The glance:** every entry carries `tab` and `row`, which is what `/bills/paid` takes back.
+- **CORS:** allows `POST` too, still from any origin with no credentials, and still answered before the key check.
+- **The log:** each check-off names the client that did it.
+
+Checks:
+- Tests on the real permission check: the glasses key reads and checks a bill off, is refused with an amount (in either case), and is refused on `/expenses`, `/bills/find` and another spelling of the path. The desk's key is refused, and the Brain's is not. A POST preflight gets a 204 that allows POST. Glance entries carry each bill's own tab and row, across two tabs.
+- Live over the tailnet: those refusals, plus real `conflict` and `already` answers from the sheet. Nothing was written.
+
+Waiting: a bill checked off from the glasses.
+
+**DR-47: The glasses get pay periods across month tabs from `GET /budget/timeline` (applies DR-45).** The G2 app draws a timeline: the balance now, the next three paydays, and the bills in between. Options: work it out in the app from the glance, or add a read. A read: the glance covers one tab, and every rule of the sheet stays in `Ledger`. It's a GET, so the glasses key may use it without a new permission (DR-46).
+- **Balances come from the sheet and are never added up in code.** Every Balance cell is `=D(row above)+C(this row)`, so it's the plan's running total. No formula reads the checkbox column, so checking a bill off never moves a balance. Each tab's Starting balance is a formula pointing at the last balance on the tab before (`=November!H26`, and H26 is `=INDEX(D:D, COUNTA(D:D))`), so balances run on across tabs. October's is typed, because there's no September tab. October's "Rebalance" row resets the chain to a typed number.
+- **Tabs:** last month's (for the last payday or a late bill), this month's, then the next ones until three paydays are in view. That's at most two more, and only while each tab exists. `coversThrough` is the last day of the last tab read.
+- **A later tab only counts rows dated in its own month or after.** December's tab has rows dated 11/08 and 11/17 that mean December, and January's tab still carries December's dates. Read as written, they'd put December's bills and paydays in November.
+- **"Now" goes by date, not sheet order.** It's the balance of the latest-dated row on or before today. Going by sheet order, a misdated row below the paycheck would make "now" the balance after payday.
+- **Undated rows** have no place on a timeline, so they're left out.
+- **`monthLows`:** each tab read, oldest first, with the lowest balance on the whole tab, including rows the bills leave out. It's the glance's `lowest`, and the number in the sheet's "Lowest balance this month" box. It's worked out from the rows rather than read from the box, because the box moves: it's `I2` on October and `H1` from November on. The box's `MIN` range also stops short of the last rows: November's covers `D2:D58` of 60.
+
+Checks:
+- 5 Ledger tests:
+  - the window from the oldest unchecked bill to the day before the third payday, across tabs, with checked bills included;
+  - a missing next tab;
+  - a late bill on last month's tab, and a starting balance that never counts as a bill;
+  - misdated rows on later tabs left out, and "now" going by date;
+  - each tab's whole low, oldest first, with a tab that has no balances left out.
+- Live over the tailnet with the glasses key: a real timeline with three paydays through Dec 14, covering through Dec 31. Each month's low matched the sheet's own box. The glance is unchanged.
+
+Waiting: the timeline on the lens.
 
 ## Resolved questions
 

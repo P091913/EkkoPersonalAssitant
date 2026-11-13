@@ -1,0 +1,20 @@
+{
+  "package_id": "com.p091913.ekko",
+  "edition": "202601",
+  "name": "Ekko",
+  "version": "0.1.0",
+  "min_sdk_version": "0.0.16",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Sends what you say to your own Ekko server and shows its reply.",
+      "whitelist": ["https://TAILNET-ADDRESS:8444"]
+    },
+    {
+      "name": "g2-microphone",
+      "desc": "Hears what you say between your two taps."
+    }
+  ],
+  "supported_languages": ["en"]
+}
