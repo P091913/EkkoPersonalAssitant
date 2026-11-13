@@ -422,6 +422,22 @@ Checks:
 
 Waiting: the desk's two cards.
 
+*DR-49 is numbered after DR-44 to DR-48, which are on other branches.*
+
+**DR-49: The Even app's own agent setting can talk to Ekko (extends DR-38).** The Even app has an agent setting (Settings → Even AI → Agent Configuration, for EvenHub developers) that sends what you say to your own agent instead of Even's. It speaks OpenAI's chat format: `POST …/v1/chat/completions` with the whole chat as `messages`, and the key as `Authorization: Bearer`. Options: point it at OpenAI or another hosted agent, a separate adapter service, or a route on `Ekko.Glasses`. A hosted agent has none of Ekko's tools, and the API keeps no memory between calls either. A separate service would need its own key, port and `tailscale serve`. `Ekko.Glasses` already holds the Brain key and is on the tailnet with HTTPS, so the route goes there:
+- `POST /v1/chat/completions` passes only the newest user message to the Brain, as `/ask` does, in the same `glasses` conversation. The caller resends the whole chat every time, but the Brain keeps its own session (DR-33). System messages and images are ignored.
+- The reply is a chat completion. When the request asks to `stream`, the same reply comes as server-sent events, in one chunk.
+- **Key:** `Glasses_PageKey`, as a Bearer token. `X-Api-Key` still works everywhere. One key, because it's the same phone and the same reach: `/ask` already does everything this route does.
+- **Setup in the Even app:** Endpoint `https://<this PC>.<tailnet>.ts.net:8444/v1/chat/completions`, API key: the page key.
+
+Unknown until the first real call: whether the phone or Even's servers make it, and whether it streams. Each call logs both (the forwarding address, the user agent and the `stream` flag, never the words), so `docker logs ekko-glasses` answers it. If Even's servers make the call, they can't reach the tailnet and the route stays unused. Ekko isn't opened to the internet for it, because what's said to Ekko can lock the PC.
+
+Checks:
+- Tests: the key from either header, the newest user words (plain text or text parts), and the shape of the completion and the stream.
+- Live, over the tailnet: no key got a 401, a Bearer call got Ekko's reply in under 2 seconds, plain and streamed. The page's cross-origin preflight still passes.
+
+*Revisit if* the Even setting should be revoked without touching the page (give it its own key), or the first real call shows Even's servers make it.
+
 ## Resolved questions
 
 - **Speech-to-text runs on the server.** The Even Hub SDK gives plugins raw microphone audio (16 kHz PCM) with no transcription API. The page records it and sends one WAV per press to `Ekko.Glasses`, which transcribes it with speaches (DR-38).
