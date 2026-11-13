@@ -34,6 +34,11 @@ app.MapGet("/budget/glance", (BudgetBook book, CancellationToken ct) => Run(book
 
 app.MapGet("/budget/timeline", (BudgetBook book, CancellationToken ct) => Run(book.TimelineAsync(ct)));
 
+app.MapGet("/budget/bills", (string? when, BudgetBook book, CancellationToken ct) =>
+    Requests.WhenProblem(when) is { } p ? Bad(p) : Run(book.BillsAsync(when!, ct)));
+
+app.MapGet("/budget/left", (BudgetBook book, CancellationToken ct) => Run(book.LeftAsync(ct)));
+
 app.MapPost("/budget/bills/find", (FindRequest r, BudgetBook book, CancellationToken ct) =>
     Requests.Problem(r) is { } p ? Bad(p) : Run(book.FindAsync(r.Item, r.Amount, ct)));
 

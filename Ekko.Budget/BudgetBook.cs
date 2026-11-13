@@ -101,6 +101,33 @@ public sealed class BudgetBook(GoogleSheets sheets, TimeProvider clock, ILogger<
         return timeline;
     }
 
+    /// <summary>What goes out on a day, or over the next 7 days, across as many month tabs as that touches (DR-50).</summary>
+    /// <param name="when">yesterday | today | tomorrow | week.</param>
+    public async Task<Answer> BillsAsync(string when, CancellationToken ct)
+    {
+        var today = Today;
+        var (from, to, name) = Ledger.Span(when, today);
+        List<(DateOnly, Month)> tabs = [];
+        List<string> missing = [];
+        for (var first = new DateOnly(from.Year, from.Month, 1); first <= to; first = first.AddMonths(1))
+            if (await LoadAsync(MonthName(first), ct) is { } tab)
+                tabs.Add((first, tab));
+            else
+                missing.Add(MonthName(first));
+        return new Answer(tabs.Count > 0 ? "ok" : "not_found", Ledger.Bills(tabs, missing, from, to, name, today));
+    }
+
+    /// <summary>Now, before the next payday, and the month's end. Next month's tab only once this month has no paycheck left.</summary>
+    public async Task<Answer> LeftAsync(CancellationToken ct)
+    {
+        var today = Today;
+        if (await LoadAsync(MonthName(today), ct) is not { } month)
+            return new Answer("not_found", $"There's no {MonthName(today)} tab on the expenses sheet yet.");
+        var paycheckLeft = month.Rows.Any(r => Ledger.IsPaycheck(r) && r.Date > today);
+        var nextMonth = paycheckLeft ? null : await LoadAsync(MonthName(today.AddMonths(1)), ct);
+        return new Answer("ok", Ledger.Left(month, nextMonth, today));
+    }
+
     /// <summary>This month's unchecked rows first; last month's if nothing this month fits (a late bill).</summary>
     public async Task<Answer> FindAsync(string? item, decimal? amount, CancellationToken ct)
     {

@@ -188,6 +188,62 @@ public static partial class Ledger
             through, lows);
     }
 
+    /// <summary>The days a question means, counted from today in the house's time zone. "week" is the next 7 days, today included.</summary>
+    /// <param name="when">yesterday | today | tomorrow | week, checked by Requests.WhenProblem.</param>
+    public static (DateOnly From, DateOnly To, string Name) Span(string when, DateOnly today) => when.Trim().ToLowerInvariant() switch
+    {
+        "yesterday" => (today.AddDays(-1), today.AddDays(-1), "Yesterday"),
+        "today" => (today, today, "Today"),
+        "tomorrow" => (today.AddDays(1), today.AddDays(1), "Tomorrow"),
+        _ => (today, today.AddDays(6), "Next 7 days"),
+    };
+
+    /// <summary>
+    /// Money out dated <paramref name="from"/> through <paramref name="to"/>, checked off or not, in date order (DR-50). A tab
+    /// counts only rows dated in its own month: January's tab still carries December's dates, and a typo belongs nowhere.
+    /// </summary>
+    /// <param name="tabs">Each month tab the span touches, with the first day of its month.</param>
+    /// <param name="missing">Months in the span with no tab, said so the answer isn't read as "nothing due".</param>
+    public static string Bills(IReadOnlyList<(DateOnly First, Month Tab)> tabs, IReadOnlyList<string> missing, DateOnly from, DateOnly to, string name, DateOnly today)
+    {
+        var rows = tabs
+            .SelectMany(t => t.Tab.Rows.Where(r => !r.IsStart && r.Amount < 0 && r.Date is { } d && d >= from && d <= to && d.Year == t.First.Year && d.Month == t.First.Month))
+            .OrderBy(r => r.Date) // stable: a tie keeps sheet order
+            .ToList();
+        var days = from == to ? from.ToString("MMM d", En)
+            : $"{from.ToString("MMM d", En)} to {(to.Month == from.Month ? to.Day.ToString(En) : to.ToString("MMM d", En))}";
+        // A past bill not ticked yet, or a future one ticked early: worth a word, since the sheet's balance assumes neither.
+        string Say(Row r) => $"{r.Item} {Money(-r.Amount!.Value)}{(from == to ? "" : On(r.Date))}"
+            + (r.Date <= today && !r.Complete ? " (not checked off)" : r.Date > today && r.Complete ? " (already paid)" : "");
+        var said = rows.Count == 0 ? "nothing going out."
+            : string.Join(", ", rows.Take(8).Select(Say)) + (rows.Count > 8 ? $", and {rows.Count - 8} more" : "")
+              + (rows.Count > 1 ? $". {Money(-rows.Sum(r => r.Amount!.Value))} in all." : ".");
+        return $"{name} ({days}): {said}" + (missing.Count > 0 ? $" There's no {string.Join(" or ", missing)} tab yet." : "");
+    }
+
+    /// <summary>
+    /// Now, just before the next payday, and the month's end (DR-50). Each is a Balance cell as the sheet has it, never added
+    /// up here (DR-47): the sheet already counts every planned row, ticked or not.
+    /// </summary>
+    /// <param name="nextMonth">Next month's tab, for its first paycheck once this month has none left; null if there's none.</param>
+    public static string Left(Month month, Month? nextMonth, DateOnly today)
+    {
+        static Row? NextPay(Month? tab, DateOnly after) => tab?.Rows.Where(r => IsPaycheck(r) && r.Date > after).MinBy(r => r.Date);
+        var parts = new List<string>();
+        // By date, as Timeline does: a misdated row below the paycheck would otherwise make "now" the balance after payday.
+        if (month.Rows.Where(r => r.Date <= today && r.Balance is not null).OrderBy(r => r.Date).LastOrDefault() is { } now)
+            parts.Add($"You're at {Money(now.Balance!.Value)} now.");
+        // Next month's paycheck only if dated in next month: its tab carries this month's dates and typos.
+        var monthEnd = new DateOnly(today.Year, today.Month, 1).AddMonths(1).AddDays(-1);
+        var (payTab, pay) = NextPay(month, today) is { } p ? (month, p) : (nextMonth, NextPay(nextMonth, monthEnd));
+        // The row above the paycheck holds the sheet's own balance before it, whatever dates the rows above carry.
+        if (pay is not null && payTab!.Rows.TakeWhile(r => r != pay).LastOrDefault(r => r.Balance is not null) is { } before)
+            parts.Add($"Just before payday on {pay.Date!.Value.ToString("MMM d", En)}, you'll have {Money(before.Balance!.Value)}.");
+        if (month.Rows.LastOrDefault(r => r.Balance is not null) is { } last)
+            parts.Add($"{month.Tab} ends at {Money(last.Balance!.Value)}.");
+        return parts.Count > 0 ? string.Join(" ", parts) : $"{month.Tab} has no balances yet.";
+    }
+
     private static bool Unpaid(Row r) => !r.IsStart && !r.Complete && r.Amount < 0;
 
     private static Entry ToEntry(Month month, Row r) => new(r.Item, Math.Abs(r.Amount!.Value), r.Date, month.Tab, r.Number);

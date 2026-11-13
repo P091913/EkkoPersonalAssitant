@@ -80,6 +80,8 @@ There are 9 domains and about 30 tools, but the router only chooses among the do
 | Media | `media_control` | action: pause, resume, stop, next | Reversible | Media API (tvremote) |
 | TV | `tv_launch_jellyfin` | none | Reversible | tvshim |
 | Budget | `get_budget_status` | month? | Read-only | Budget service (Sheets) |
+| Budget | `get_bills` | when: yesterday, today, tomorrow, week (next 7 days; the default) | Read-only | Budget service (Sheets) |
+| Budget | `get_money_left` | none | Read-only | Budget service (Sheets) |
 | Budget | `mark_bill_paid` | item?, amount? (at least one; an amount alone finds the row) | Read-only lookup; the write is `mark_row_paid` (code-only, Write, confirm) | Budget service (Sheets) |
 | Budget | `add_expense` | item, amount, income?, planned? | Write, confirm | Budget service (Sheets) |
 | Food | `log_food` | items: food, quantity?, calories? (the measure is part of the food: "gram of chicken" × 200) | Reversible; a food not on the list is read back first (`log_new_food`, code-only, Write, confirm) | Food service (SQLite) |
@@ -482,6 +484,22 @@ Checks:
 - Live over the tailnet with the glasses key: a real timeline with three paydays through Dec 14, covering through Dec 31. Each month's low matched the sheet's own box. The glance is unchanged.
 
 Waiting: the timeline on the lens.
+
+*DR-50 is numbered after DR-48 and DR-49, which are on other branches.*
+
+**DR-50: Quick budget questions get their own tools, and stay local (extends DR-24).** On the glasses (Nov 12), "what bills came out yesterday", "break that down" and "how much will we have left" all got the same monthly summary, because `get_budget_status` was the only read. Haiku, which took over from the 6th message (DR-34), gave the same answers, so the gap was tools, not the model. Options: hand a model the month's rows and let it answer any question, or a tool per kind of question. The user's call: tools, all local. A free answer needs a model good with dates and sums, which means Claude and the budget leaving the PC. A tool answers a narrower set of questions, but the 4B picks it reliably and the numbers come from code.
+- **`GET /budget/bills?when=`** (yesterday, today, tomorrow, week) lists money out on those days, checked off or not, in date order, with the total. "Week" is the next 7 days, today included, because "this week" asked on a Sunday shouldn't mean one day. A past row not checked off says so, and so does a future one already paid. A week can cross into next month's tab, and each tab counts only rows dated in its own month (DR-47's typos). A month with no tab is said, so a gap isn't read as "nothing due". Up to 8 rows are named.
+- **`GET /budget/left`**: the balance now, just before the next payday, and at the month's end. All three are Balance cells (DR-47's rule). "Now" goes by date, as in the timeline. "Before payday" is the row above the paycheck in sheet order, because that row is the sheet's own balance before it, even when a typo'd date sits above it. With no paycheck left this month, next month's first one counts.
+- Both are GETs, so the glasses and desk keys may read them (DR-46).
+- **Tools:** `get_bills` (when, default week) and `get_money_left`. `get_budget_status` also lists "did my paycheck come in yet", which `get_money_left` took without it.
+
+Checks:
+- Tests: each span on a real-shaped tab, a week across two tabs with a typo left out, a missing tab, money left on one tab and across two, the `when` check, and the Brain tools' requests.
+- Evals: 7 new cases in the user's own words, all passing on the 4B. 92/102 end to end, against 85/95 before. "How much do I have left for groceries" now expects `get_money_left`: the sheet has no category budgets (DR-24), and the balances answer it better than the summary.
+- One regression: "how is the budget looking this month" now gets a month the user didn't say (October, or May with other wordings). Rewording the month hint didn't fix it. The fix is a code check that drops a month the user didn't say, without breaking "how did last month go".
+- Live, through the Even route: all five questions answered from the real sheet. The glasses key still reads, and still gets a 403 on a write.
+
+*Revisit if* a question keeps falling between these tools; then it gets its own tool, or this DR's other option comes back.
 
 ## Resolved questions
 

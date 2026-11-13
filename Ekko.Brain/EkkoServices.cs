@@ -76,6 +76,8 @@ public static class EkkoServices
                 c.DefaultRequestHeaders.Add(ApiKey.Header, budget.ApiKey);
         });
         services.AddScoped<ITool, GetBudgetStatus>();
+        services.AddScoped<ITool, GetBills>();
+        services.AddScoped<ITool, GetMoneyLeft>();
         services.AddScoped<ITool, MarkBillPaid>();
         services.AddScoped<ITool, MarkRowPaid>();
         services.AddScoped<ITool, AddExpense>();

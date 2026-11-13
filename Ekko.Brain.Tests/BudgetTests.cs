@@ -162,6 +162,25 @@ public class BudgetTests
         Assert.Equal("/budget/status?month=October", _budget.Requests.Single().Path);
     }
 
+    [Theory]
+    [InlineData("""{"when":"yesterday"}""", "/budget/bills?when=yesterday")]
+    [InlineData("""{"when":"tomorrow"}""", "/budget/bills?when=tomorrow")]
+    [InlineData("""{}""", "/budget/bills?when=week")]
+    public async Task Bills_ask_for_the_day_said_and_the_week_by_default(string args, string path)
+    {
+        _answers.Enqueue(Ok);
+        await Run("get_bills", args);
+        Assert.Equal(path, _budget.Requests.Single().Path);
+    }
+
+    [Fact]
+    public async Task Money_left_is_read_by_the_service()
+    {
+        _answers.Enqueue(Ok);
+        Assert.Equal("Done on the sheet.", (await Run("get_money_left", "{}")).Say);
+        Assert.Equal("/budget/left", _budget.Requests.Single().Path);
+    }
+
     [Fact]
     public void The_model_never_sees_the_row_writer() =>
         Assert.DoesNotContain(_catalog.ForDomain(Domain.Budget), t => t.Name == MarkRowPaid.ToolName);

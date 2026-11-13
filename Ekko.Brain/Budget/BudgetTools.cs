@@ -12,6 +12,11 @@ public enum MonthName { January, February, March, April, May, June, July, August
 public sealed record BudgetStatusArgs(
     [property: Description("Only if the user named a month.")] MonthName? Month = null);
 
+public enum BillsWhen { Yesterday, Today, Tomorrow, Week }
+
+public sealed record BillsArgs(
+    [property: Description("week is the next 7 days from today: 'this week', 'coming up', 'the next few days'.")] BillsWhen When = BillsWhen.Week);
+
 public sealed record MarkBillPaidArgs(
     [property: MinLength(1), MaxLength(80), Description("The row as the user named it, without words like paid, bill or expense: 'water', 'Verizon', 'paycheck', 'Netflix'. Leave it out if they gave only an amount.")] string? Item = null,
     [property: Range(0.01, 100000), Description("Dollars, only if the user said an amount: what it really came to, or the amount that picks out the row ('the 12.47 one').")] decimal? Amount = null);
@@ -29,10 +34,33 @@ public sealed record AddExpenseArgs(
 public sealed class GetBudgetStatus(BudgetService budget)
     : Tool<BudgetStatusArgs>("get_budget_status", Domain.Budget,
         "Read a month of the expenses sheet: bills still unpaid, money still coming in, the lowest and ending balance, unexpected spending. " +
-        "For 'what bills are left', 'how's the budget looking', 'how did October go'.")
+        "For 'what bills are left', 'how's the budget looking', 'how did October go', 'did my paycheck come in yet'.")
 {
     protected override async Task<ToolResult> RunAsync(BudgetStatusArgs args, CancellationToken ct) =>
         BudgetResult.From(await budget.GetAsync(args.Month is { } m ? $"budget/status?month={m}" : "budget/status", ct));
+}
+
+/// <summary>A day's bills, or the next 7 days': the service picks the rows by date and words the answer (DR-50).</summary>
+[RiskClass(Risk.ReadOnly)]
+public sealed class GetBills(BudgetService budget)
+    : Tool<BillsArgs>("get_bills", Domain.Budget,
+        "List what goes out on one day, or in the next 7 days, from the expenses sheet: 'what bills came out yesterday', " +
+        "'what bills come out tomorrow', 'anything due today', 'what bills are coming out this week'.")
+{
+    protected override async Task<ToolResult> RunAsync(BillsArgs args, CancellationToken ct) =>
+        BudgetResult.From(await budget.GetAsync($"budget/bills?when={args.When.ToString().ToLowerInvariant()}", ct));
+}
+
+/// <summary>The sheet's own balances: now, just before the next payday, and at the month's end (DR-50).</summary>
+[RiskClass(Risk.ReadOnly)]
+public sealed class GetMoneyLeft(BudgetService budget)
+    : Tool<NoArgs>("get_money_left", Domain.Budget,
+        "How much money there is now, how much will be left just before the next payday, and how the month ends: " +
+        "'how much will we have left', 'what budget do we have for the rest of the month', 'how much money do we have', " +
+        "'will we make it to payday', 'are we on track with our budget'.")
+{
+    protected override async Task<ToolResult> RunAsync(NoArgs args, CancellationToken ct) =>
+        BudgetResult.From(await budget.GetAsync("budget/left", ct));
 }
 
 /// <summary>
