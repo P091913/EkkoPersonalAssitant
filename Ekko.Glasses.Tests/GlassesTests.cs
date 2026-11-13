@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -38,6 +39,7 @@ public class TalkTests
     [InlineData("/hear", true)]
     [InlineData("/ask", true)]
     [InlineData("/ASK", true)]
+    [InlineData("/v1/chat/completions", true)]
     [InlineData("/", false)]
     [InlineData("/app.js", false)]
     [InlineData("/asking.js", false)]
@@ -53,6 +55,15 @@ public class TalkTests
         Assert.Equal(ok, Talk.KeyMatches(configured, supplied));
 
     [Theory]
+    [InlineData("X-Api-Key", "page-secret", "page-secret")]
+    [InlineData("Authorization", "Bearer page-secret", "page-secret")]
+    [InlineData("Authorization", "bearer  page-secret ", "page-secret")]
+    [InlineData("Authorization", "Basic page-secret", null)]
+    [InlineData("Accept", "page-secret", null)]
+    public void The_key_comes_from_X_Api_Key_or_a_Bearer_token(string header, string value, string? key) =>
+        Assert.Equal(key, Talk.SuppliedKey(new HeaderDictionary { [header] = value }));
+
+    [Theory]
     [InlineData(null, "text is required.")]
     [InlineData("   ", "text is required.")]
     [InlineData("volume up", null)]
@@ -61,6 +72,49 @@ public class TalkTests
     [Fact]
     public void Text_over_the_Brains_limit_is_refused_here() =>
         Assert.Equal("text is limited to 500 characters.", Talk.Problem(new AskRequest(new string('a', 501))));
+}
+
+public class OpenAiChatTests
+{
+    private static ChatRequest Parse(string json) =>
+        JsonSerializer.Deserialize<ChatRequest>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+    [Theory]
+    [InlineData("""{"messages":[{"role":"system","content":"be brief"},{"role":"user","content":"volume up"}]}""", "volume up")]
+    [InlineData("""{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"Hi."},{"role":"user","content":"volume up"}]}""", "volume up")]
+    [InlineData("""{"messages":[{"role":"user","content":"volume up"},{"role":"assistant","content":"Volume up."}]}""", "volume up")]
+    [InlineData("""{"messages":[{"role":"user","content":[{"type":"text","text":"volume"},{"type":"image_url","image_url":{}},{"type":"text","text":"up"}]}]}""", "volume up")]
+    [InlineData("""{"messages":[{"role":"system","content":"be brief"}]}""", null)]
+    [InlineData("""{"messages":[{"role":"user","content":null}]}""", null)]
+    [InlineData("""{}""", null)]
+    public void Only_the_newest_user_words_go_to_Ekko(string json, string? text) => Assert.Equal(text, OpenAiChat.LastUserText(Parse(json)));
+
+    [Fact]
+    public void Stream_defaults_to_off() => Assert.False(Parse("""{"messages":[]}""").Stream);
+
+    [Fact]
+    public void The_reply_is_a_chat_completion()
+    {
+        var json = JsonSerializer.SerializeToElement(OpenAiChat.Completion("Volume up."), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("chat.completion", json.GetProperty("object").GetString());
+        var choice = json.GetProperty("choices")[0];
+        Assert.Equal("assistant", choice.GetProperty("message").GetProperty("role").GetString());
+        Assert.Equal("Volume up.", choice.GetProperty("message").GetProperty("content").GetString());
+        Assert.Equal("stop", choice.GetProperty("finish_reason").GetString());
+    }
+
+    [Fact]
+    public void A_streamed_reply_is_one_chunk_then_the_end()
+    {
+        var events = OpenAiChat.Stream("Volume up.").Split("\n\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(3, events.Length);
+        Assert.All(events, e => Assert.StartsWith("data: ", e));
+        Assert.Equal("data: [DONE]", events[2]);
+        var first = JsonDocument.Parse(events[0][6..]).RootElement.GetProperty("choices")[0];
+        Assert.Equal("Volume up.", first.GetProperty("delta").GetProperty("content").GetString());
+        Assert.Equal(JsonValueKind.Null, first.GetProperty("finish_reason").ValueKind);
+        Assert.Equal("stop", JsonDocument.Parse(events[1][6..]).RootElement.GetProperty("choices")[0].GetProperty("finish_reason").GetString());
+    }
 }
 
 public class ClientTests

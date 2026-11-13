@@ -27,8 +27,15 @@ public static class Talk
         : r.Text.Trim().Length > BrainClient.MaxText ? $"text is limited to {BrainClient.MaxText} characters."
         : null;
 
-    /// <summary>Only the two routes that reach Ekko need the key; the page itself holds no secrets.</summary>
-    public static bool NeedsKey(PathString path) => path.StartsWithSegments("/hear") || path.StartsWithSegments("/ask");
+    /// <summary>Only the routes that reach Ekko need the key; the page itself holds no secrets.</summary>
+    public static bool NeedsKey(PathString path) =>
+        path.StartsWithSegments("/hear") || path.StartsWithSegments("/ask") || path.StartsWithSegments("/v1");
+
+    /// <summary>The page sends X-Api-Key; OpenAI-style callers, like the Even app's agent setting (DR-49), send a Bearer token.</summary>
+    public static string? SuppliedKey(IHeaderDictionary headers) =>
+        headers["X-Api-Key"] is { Count: > 0 } key ? key.ToString()
+        : headers.Authorization.ToString() is var auth && auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? auth[7..].Trim()
+        : null;
 
     /// <summary>Compared in constant time. No configured key means open: Development only, Program refuses otherwise.</summary>
     public static bool KeyMatches(string? configured, string? supplied) =>
@@ -37,6 +44,52 @@ public static class Talk
 }
 
 public sealed record AskRequest(string? Text);
+
+/// <summary>An OpenAI-style chat request, as the Even app's agent setting sends it (DR-49): only what Ekko reads.</summary>
+public sealed record ChatRequest(List<ChatMessage>? Messages, bool Stream = false);
+
+/// <summary>Content is a string, or a list of parts of which only the text ones count.</summary>
+public sealed record ChatMessage(string? Role, JsonElement Content);
+
+/// <summary>OpenAI's chat format, which the Even app's agent setting speaks (DR-49).</summary>
+public static class OpenAiChat
+{
+    /// <summary>
+    /// The newest thing the user said. The caller sends the whole chat every time, but Ekko keeps its own session (DR-33),
+    /// so the earlier messages would only repeat what it already has.
+    /// </summary>
+    public static string? LastUserText(ChatRequest r) => r.Messages?.LastOrDefault(m => m.Role == "user")?.Content switch
+    {
+        { ValueKind: JsonValueKind.String } text => text.GetString(),
+        { ValueKind: JsonValueKind.Array } parts => string.Join(" ", parts.EnumerateArray()
+            .Select(p => p.ValueKind == JsonValueKind.Object && p.TryGetProperty("type", out var type) && type.ValueEquals("text")
+                         && p.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null)
+            .OfType<string>()),
+        _ => null,
+    };
+
+    public static object Completion(string reply) => new
+    {
+        id = Id(), @object = "chat.completion", created = Now(), model = "ekko",
+        choices = new[] { new { index = 0, message = new { role = "assistant", content = reply }, finish_reason = "stop" } },
+    };
+
+    /// <summary>The same reply as server-sent events, for a caller that asked to stream: all of it in one chunk, then the end.</summary>
+    public static string Stream(string reply)
+    {
+        var (id, created) = (Id(), Now());
+        string Chunk(object delta, string? finish) => "data: " + JsonSerializer.Serialize(new
+        {
+            id, @object = "chat.completion.chunk", created, model = "ekko",
+            choices = new[] { new { index = 0, delta, finish_reason = finish } },
+        }) + "\n\n";
+        return Chunk(new { role = "assistant", content = reply }, null) + Chunk(new { }, "stop") + "data: [DONE]\n\n";
+    }
+
+    private static string Id() => "ekko-" + Guid.NewGuid().ToString("N");
+
+    private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+}
 
 /// <summary>The Brain, as the deck and Telegram reach it: POST /message with this service's own key (DR-38).</summary>
 public sealed class BrainClient(HttpClient http, ILogger<BrainClient> log)

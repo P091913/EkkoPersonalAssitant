@@ -30,10 +30,10 @@ var app = builder.Build();
 
 app.Use(async (context, next) =>
 {
-    if (Talk.NeedsKey(context.Request.Path) && !Talk.KeyMatches(pageKey, context.Request.Headers["X-Api-Key"]))
+    if (Talk.NeedsKey(context.Request.Path) && !Talk.KeyMatches(pageKey, Talk.SuppliedKey(context.Request.Headers)))
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        await context.Response.WriteAsJsonAsync(new { error = "missing or wrong X-Api-Key" });
+        await context.Response.WriteAsJsonAsync(new { error = "missing or wrong key" });
         return;
     }
     await next();
@@ -58,5 +58,18 @@ app.MapPost("/hear", async (HttpRequest request, Speech speech, CancellationToke
 
 app.MapPost("/ask", async (AskRequest r, BrainClient brain, CancellationToken ct) =>
     Talk.Problem(r) is { } problem ? Results.BadRequest(new { error = problem }) : Results.Ok(new { reply = await brain.AskAsync(r.Text!.Trim(), ct) }));
+
+// The Even app's own agent setting (DR-49): OpenAI's chat format, with the page key as its Bearer token.
+app.MapPost("/v1/chat/completions", async (ChatRequest r, HttpRequest request, BrainClient brain, ILogger<Program> log, CancellationToken ct) =>
+{
+    // shortcut: Even doesn't document where calls come from or whether they stream; drop this line once a real call shows both.
+    log.LogInformation("Even agent call: stream {Stream}, {Count} messages, from {From}, agent {Agent}",
+        r.Stream, r.Messages?.Count ?? 0, request.Headers["X-Forwarded-For"].ToString(), request.Headers.UserAgent.ToString());
+    var text = OpenAiChat.LastUserText(r);
+    if (Talk.Problem(new AskRequest(text)) is { } problem)
+        return Results.BadRequest(new { error = new { message = problem } });
+    var reply = await brain.AskAsync(text!.Trim(), ct);
+    return r.Stream ? Results.Text(OpenAiChat.Stream(reply), "text/event-stream") : Results.Ok(OpenAiChat.Completion(reply));
+});
 
 app.Run();
