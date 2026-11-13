@@ -50,8 +50,16 @@
 {"text": "what bills do I still have to pay", "domain": "budget", "tool": "get_budget_status", "args": {}}
 {"text": "how is the budget looking this month", "domain": "budget", "tool": "get_budget_status", "args": {}}
 {"text": "how did october go money wise", "domain": "budget", "tool": "get_budget_status", "args": {"month": "october"}}
-{"text": "how much do I have left for groceries", "domain": "budget", "tool": "get_budget_status", "args": {}}
+{"text": "how much do I have left for groceries", "domain": "budget", "tool": "get_money_left", "args": {}}
 {"text": "did my paycheck come in yet", "domain": "budget", "tool": "get_budget_status", "args": {}}
+// bills by day and money left (DR-50): the user's own words from Nov 12, said to the glasses or asked for.
+{"text": "What bills came out yesterday?", "domain": "budget", "tool": "get_bills", "args": {"when": "yesterday"}}
+{"text": "what bills come out tomorrow", "domain": "budget", "tool": "get_bills", "args": {"when": "tomorrow"}}
+{"text": "what bills are coming out this week", "domain": "budget", "tool": "get_bills", "args": {"when": "week"}}
+{"text": "is anything due today", "domain": "budget", "tool": "get_bills", "args": {"when": "today"}}
+{"text": "how much will we have left", "domain": "budget", "tool": "get_money_left", "args": {}}
+{"text": "What budget do we have for the rest of the month?", "domain": "budget", "tool": "get_money_left", "args": {}}
+{"text": "are we on track with our budget", "domain": "budget", "tool": "get_money_left", "args": {}}
 {"text": "I paid the water bill", "domain": "budget", "tool": "mark_bill_paid", "args": [{"item": "water"}, {"item": "water bill"}]}
 {"text": "verizon is paid, it was 220", "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "verizon", "amount": 220}}
 {"text": "my paycheck came in", "domain": "budget", "tool": "mark_bill_paid", "args": {"item": "paycheck"}}

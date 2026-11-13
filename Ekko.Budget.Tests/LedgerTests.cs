@@ -373,6 +373,48 @@ public class LedgerTests
     [InlineData(-312, "minus $312")]
     [InlineData(1240.5, "$1,240.50")]
     public void Money_reads_naturally(decimal amount, string said) => Assert.Equal(said, Ledger.Money(amount));
+
+    private static string Bills(string when, DateOnly today, params (DateOnly, Month)[] tabs)
+    {
+        var (from, to, name) = Ledger.Span(when, today);
+        return Ledger.Bills(tabs, [], from, to, name, today);
+    }
+
+    [Theory]
+    [InlineData("yesterday", "Yesterday (Nov 9): nothing going out.")]
+    [InlineData("today", "Today (Nov 10): Glasses (2/4) $231.58 (not checked off).")]
+    [InlineData("tomorrow", "Tomorrow (Nov 11): Discover $108 (already paid).")]
+    [InlineData("week", "Next 7 days (Nov 10 to 16): Glasses (2/4) $231.58 on Nov 10 (not checked off), Discover $108 on Nov 11 (already paid), " +
+                        "Mortgage Catch-Up $1,000 on Nov 15. $1,339.58 in all.")]
+    public void Bills_by_day_are_money_out_checked_or_not(string when, string said) =>
+        Assert.Equal(said, Bills(when, Nov10, (D("2026-11-01"), TimelineNovember())));
+
+    [Fact]
+    public void A_week_across_two_tabs_reads_both_and_each_tab_only_for_its_own_month()
+    {
+        var december = TimelineDecember();
+        december.Rows.Add(R(9, "2026-11-29", "Typo", -5, 0, false)); // December's tab, dated in November: belongs nowhere
+        Assert.Equal("Next 7 days (Nov 28 to Dec 4): Mortgage $1,085.33 on Dec 1.",
+            Bills("week", D("2026-11-28"), (D("2026-11-01"), TimelineNovember()), (D("2026-12-01"), december)));
+
+        var (from, to, name) = Ledger.Span("week", D("2026-11-28"));
+        Assert.Equal("Next 7 days (Nov 28 to Dec 4): nothing going out. There's no December tab yet.",
+            Ledger.Bills([(D("2026-11-01"), TimelineNovember())], ["December"], from, to, name, D("2026-11-28")));
+    }
+
+    [Fact]
+    public void Left_reads_the_sheets_own_balances_now_before_payday_and_at_the_end() =>
+        Assert.Equal("You're at $708.42 now. Just before payday on Nov 15, you'll have $600.42. November ends at $3,000.42.",
+            Ledger.Left(TimelineNovember(), nextMonth: null, Nov10));
+
+    [Fact]
+    public void With_no_paycheck_left_this_month_the_next_tabs_first_one_counts_by_the_row_above_it()
+    {
+        // December's typo'd 11/08 row sits above its first paycheck, so the sheet's balance before payday includes it.
+        Assert.Equal("You're at $3,000.42 now. Just before payday on Dec 14, you'll have $1,661.09. November ends at $3,000.42.",
+            Ledger.Left(TimelineNovember(), TimelineDecember(), D("2026-11-30")));
+        Assert.Equal("You're at $3,000.42 now. November ends at $3,000.42.", Ledger.Left(TimelineNovember(), nextMonth: null, D("2026-11-30")));
+    }
 }
 
 public class RequestTests
@@ -383,6 +425,13 @@ public class RequestTests
     [InlineData("Novembr", false)]
     [InlineData("'!A1", false)]
     public void Month_must_be_a_month_name(string? month, bool ok) => Assert.Equal(ok, Requests.MonthProblem(month) is null);
+
+    [Theory]
+    [InlineData("yesterday", true)]
+    [InlineData("Week", true)]
+    [InlineData(null, false)]
+    [InlineData("next month", false)]
+    public void When_is_one_of_four_spans(string? when, bool ok) => Assert.Equal(ok, Requests.WhenProblem(when) is null);
 
     [Theory]
     [InlineData("Tire", 380, true)]

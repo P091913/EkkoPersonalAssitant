@@ -12,6 +12,9 @@ public static class Requests
             ? null
             : "month must be a month name, like November.";
 
+    public static string? WhenProblem(string? when) =>
+        when?.Trim().ToLowerInvariant() is "yesterday" or "today" or "tomorrow" or "week" ? null : "when must be yesterday, today, tomorrow or week.";
+
     public static string? ItemProblem(string? item) =>
         string.IsNullOrWhiteSpace(item) ? "item is required."
         : item.Trim().Length > 80 ? "item is longer than 80 characters."

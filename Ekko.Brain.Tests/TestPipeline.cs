@@ -50,7 +50,7 @@ public static class TestPipeline
     public static ITool[] BudgetTools(FakeHttp budget)
     {
         var service = new BudgetService(budget.Client("http://budget/"));
-        return [new GetBudgetStatus(service), new MarkBillPaid(service), new MarkRowPaid(service), new AddExpense(service)];
+        return [new GetBudgetStatus(service), new GetBills(service), new GetMoneyLeft(service), new MarkBillPaid(service), new MarkRowPaid(service), new AddExpense(service)];
     }
 
     public static ITool[] MediaTools(FakeHttp tv)
