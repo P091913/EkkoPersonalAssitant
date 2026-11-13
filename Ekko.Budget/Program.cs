@@ -13,7 +13,10 @@ if (keys.Count == 0 && !builder.Environment.IsDevelopment())
     throw new InvalidOperationException("Api:Keys needs at least one client key outside Development: this service writes to your finances.");
 // Clients that only read (the desk's Today card): their key can't change the sheet even if the device holding it is taken.
 var readOnly = builder.Configuration.GetSection("Api:ReadOnly").Get<string[]>() ?? [];
+// Clients that read and may make only the writes listed for them (DR-46): the glasses check bills off.
+var writes = builder.Configuration.GetSection("Api:Writes").Get<Dictionary<string, string[]>>() ?? [];
 
+builder.Services.AddCors();
 builder.Services.AddSingleton(sheet);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient("sheets", c => c.Timeout = TimeSpan.FromSeconds(15));
@@ -22,34 +25,20 @@ builder.Services.AddSingleton<BudgetBook>();
 
 var app = builder.Build();
 
-app.Use(async (context, next) =>
-{
-    var client = keys.Count == 0 ? "dev" : ApiKeys.ClientFor(keys, context.Request.Headers["X-Api-Key"]);
-    if (client is null)
-    {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        await context.Response.WriteAsJsonAsync(new Answer("error", "Missing or wrong X-Api-Key."));
-        return;
-    }
-    if (readOnly.Contains(client) && !HttpMethods.IsGet(context.Request.Method))
-    {
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        await context.Response.WriteAsJsonAsync(new Answer("error", "This key can only read the budget."));
-        return;
-    }
-    await next();
-});
+app.UseClientKeys(keys, readOnly, writes);
 
 app.MapGet("/budget/status", (string? month, BudgetBook book, CancellationToken ct) =>
     Requests.MonthProblem(month) is { } p ? Bad(p) : Run(book.StatusAsync(month, ct)));
 
 app.MapGet("/budget/glance", (BudgetBook book, CancellationToken ct) => Run(book.GlanceAsync(ct)));
 
+app.MapGet("/budget/timeline", (BudgetBook book, CancellationToken ct) => Run(book.TimelineAsync(ct)));
+
 app.MapPost("/budget/bills/find", (FindRequest r, BudgetBook book, CancellationToken ct) =>
     Requests.Problem(r) is { } p ? Bad(p) : Run(book.FindAsync(r.Item, r.Amount, ct)));
 
-app.MapPost("/budget/bills/paid", (PaidRequest r, BudgetBook book, CancellationToken ct) =>
-    Requests.Problem(r) is { } p ? Bad(p) : Run(book.MarkPaidAsync(r, ct)));
+app.MapPost("/budget/bills/paid", (PaidRequest r, HttpContext http, BudgetBook book, CancellationToken ct) =>
+    Requests.Problem(r) is { } p ? Bad(p) : Run(book.MarkPaidAsync(r, ApiKeys.Client(http), ct)));
 
 app.MapPost("/budget/expenses", (ExpenseRequest r, BudgetBook book, CancellationToken ct) =>
     Requests.Problem(r) is { } p ? Bad(p) : Run(book.AddAsync(r, ct)));

@@ -26,7 +26,13 @@ builder.Services.AddHttpClient<Speech>(c =>
     c.Timeout = TimeSpan.FromSeconds(60); // the first request after a restart loads the model
 });
 
+// The installed app (DR-44) calls from an origin Even doesn't document, so any origin. The key is a header, not a
+// cookie, so another site's page still gets a 401.
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().WithMethods("POST")));
+
 var app = builder.Build();
+
+app.UseCors(); // before the key check: a preflight never carries X-Api-Key
 
 app.Use(async (context, next) =>
 {

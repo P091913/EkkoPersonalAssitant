@@ -64,7 +64,7 @@ public class LedgerTests
     {
         var glance = Ledger.Glance(November());
         Assert.Equal(new Glance("ok", "6 bills left, $628 in all. Next: Groceries - shop 2, $150 on Nov 14. Ending balance $922.",
-            6, 628, 922, new NextBill("Groceries - shop 2", 150, new DateOnly(2026, 11, 14))), glance);
+            6, 628, 922, new Entry("Groceries - shop 2", 150, new DateOnly(2026, 11, 14), "November", 6)), glance with { Lowest = null, UntilPayday = null });
 
         var month = November();
         month.Rows[1] = month.Rows[1] with { Complete = false }; // rent, Nov 1, not paid yet
@@ -72,6 +72,194 @@ public class LedgerTests
 
         month.Rows.RemoveAll(r => r.Amount < 0 && !r.IsStart);
         Assert.Equal((0, 0m, null), (Ledger.Glance(month).BillsLeft, Ledger.Glance(month).LeftToPay, Ledger.Glance(month).Next));
+    }
+
+    [Fact]
+    public void The_low_is_the_row_status_reads_out_and_keeps_its_sign()
+    {
+        Assert.Equal(new Low(200, "Rent", new DateOnly(2026, 11, 1)), Ledger.Glance(November()).Lowest);
+
+        var month = November();
+        month.Rows[3] = month.Rows[3] with { Balance = -12.5m }; // Groceries - shop 1 overdrew the account
+        Assert.Equal(new Low(-12.5m, "Groceries - shop 1", new DateOnly(2026, 11, 7)), Ledger.Glance(month).Lowest);
+        Assert.Contains("Lowest balance minus $12.50, after Groceries - shop 1 on Nov 7.", Ledger.Status(month));
+    }
+
+    /// <summary>Like the real sheet: money in that isn't pay, and two paychecks with bills on their own days.</summary>
+    private static Month PayMonth(bool paid = false) => new("November", 42, Columns,
+    [
+        R(2, "2026-10-31", "Starting balance", 1000, 1000, false, formula: null),
+        R(3, "2026-11-01", "Rent", -800, 200, false),              // overdue: still to cover
+        R(4, "2026-11-03", "Done already", -10, 190, true),
+        R(5, "2026-11-04", "Healthcare Stipend", 331, 521, false), // money in, but not pay
+        R(6, "2026-11-14", "Water", -58, 463, false),
+        R(7, null, "Gym", -30, 433, false),                         // undated: last
+        R(8, "2026-11-15", "PAYCHECK", 1500, 1933, paid),
+        R(9, "2026-11-15", "Phone", -60, 1873, false),              // the paycheck's own day: it covers it
+        R(10, "2026-11-20", "Insurance", -190, 1683, false),
+        R(11, "2026-11-30", "PAYCHECK", 1500, 3183, paid),
+    ]);
+
+    [Fact]
+    public void Until_payday_is_the_bills_before_this_months_next_paycheck()
+    {
+        var payday = Ledger.UntilPayday(PayMonth(), nextMonth: null);
+
+        Assert.Equal(new Entry("PAYCHECK", 1500, new DateOnly(2026, 11, 15), "November", 8), payday.Paycheck);
+        Assert.Equal(new[]
+        {
+            new Entry("Rent", 800, new DateOnly(2026, 11, 1), "November", 3),
+            new Entry("Water", 58, new DateOnly(2026, 11, 14), "November", 6),
+            new Entry("Gym", 30, null, "November", 7),
+        }, payday.Bills);
+        Assert.Equal(888, payday.Total);
+    }
+
+    [Fact]
+    public void With_no_paycheck_left_this_month_next_months_first_one_counts()
+    {
+        var december = new Month("December", 43, Columns,
+        [
+            R(2, "2026-12-01", "Starting balance", 3183, 3183, false, formula: null),
+            R(3, "2026-12-01", "Healthcare Stipend", 331, 3514, false), // money in before the paycheck, but not pay
+            R(4, "2026-12-01", "Mortgage", -1085.33m, 2428.67m, false),
+            R(5, "2026-12-14", "PAYCHECK", 1500, 3928.67m, false),
+            R(6, "2026-12-14", "Gas Meter Bill", -62, 3866.67m, false),
+            R(7, "2026-12-30", "PAYCHECK", 1500, 5366.67m, false),
+        ]);
+
+        var payday = Ledger.UntilPayday(PayMonth(paid: true), december);
+
+        Assert.Equal(new Entry("PAYCHECK", 1500, new DateOnly(2026, 12, 14), "December", 5), payday.Paycheck);
+        Assert.Equal(new[] { "Rent", "Water", "Phone", "Insurance", "Mortgage", "Gym" }, payday.Bills.Select(b => b.Item)); // all of November's
+        Assert.Equal(2223.33m, payday.Total);
+
+        // Each bill names its own tab and row, as /bills/paid takes them.
+        var glance = Ledger.Glance(PayMonth(paid: true), december);
+        Assert.Equal(new[] { ("November", 3), ("November", 6), ("November", 9), ("November", 10), ("December", 4), ("November", 7) },
+            glance.UntilPayday!.Bills.Select(b => (b.Tab, b.Row)));
+        Assert.Equal(payday.Paycheck, glance.UntilPayday.Paycheck);
+    }
+
+    [Fact]
+    public void With_no_paycheck_on_either_tab_every_unchecked_bill_counts()
+    {
+        var december = new Month("December", 43, Columns, [R(2, "2026-12-01", "Mortgage", -1085.33m, 0, false)]);
+
+        foreach (var next in new[] { null, december })
+        {
+            var payday = Ledger.UntilPayday(PayMonth(paid: true), next);
+            Assert.Null(payday.Paycheck);
+            Assert.Equal(new[] { "Rent", "Water", "Phone", "Insurance", "Gym" }, payday.Bills.Select(b => b.Item));
+            Assert.Equal(1138, payday.Total);
+        }
+    }
+
+    // ------------------------------------------------------------ timeline (DR-47)
+
+    private static readonly DateOnly Nov10 = new(2026, 11, 10);
+
+    private static DateOnly D(string date) => DateOnly.Parse(date, System.Globalization.CultureInfo.InvariantCulture);
+
+    private static Month Tab(string name, params Row[] rows) => new(name, 0, Columns, [.. rows]);
+
+    private static Month TimelineOctober(bool lateBill = false) => Tab("October",
+        R(2, "2026-09-30", "Starting balance", 500, 500, true, formula: null),
+        R(3, "2026-10-20", "Late bill", -20, 480, !lateBill),
+        R(4, "2026-10-30", "PAYCHECK", 1500, 1980, true), // the last payday: checked off, on last month's tab
+        R(5, "2026-10-31", "Pizza", -25, 1955, true));
+
+    private static Month TimelineNovember(decimal start = 1955) => Tab("November",
+        R(2, "2026-10-31", "Starting balance", start, 1955, true, formula: null),
+        R(3, "2026-11-01", "Mortgage", -1000, 955, true),
+        R(4, "2026-11-08", "Coffee", -15, 940, true),
+        R(5, "2026-11-10", "Glasses (2/4)", -231.58m, 708.42m, false), // the oldest unchecked bill: today
+        R(6, "2026-11-11", "Discover", -108, 600.42m, true),            // paid early: still listed
+        R(7, "2026-11-15", "PAYCHECK", 1500, 2100.42m, false),
+        R(8, "2026-11-15", "Mortgage Catch-Up", -1000, 1100.42m, false),
+        R(9, "2026-11-30", "PAYCHECK", 1500, 2600.42m, false),
+        R(10, "2026-11-30", "Bank Bonus", 400, 3000.42m, false));         // money in: never a bill
+
+    private static Month TimelineDecember() => Tab("December",
+        R(2, "2026-12-01", "Starting balance", 3000.42m, 3000.42m, false, formula: null),
+        R(3, "2026-12-01", "Mortgage", -1085.33m, 1915.09m, false),
+        R(4, "2026-11-08", "Loan Rehabilitation", -254, 1661.09m, false), // the sheet's typo for 12/08
+        R(5, "2026-12-14", "PAYCHECK", 1500, 3161.09m, false),
+        R(6, "2026-12-14", "Gas", -62, 3099.09m, false),
+        R(7, "2026-11-17", "Primary Care", -20, 3079.09m, false),         // another typo, below the paycheck
+        R(8, "2026-12-30", "PAYCHECK", 1500, 4579.09m, false));
+
+    [Fact]
+    public void A_timeline_runs_from_the_oldest_unchecked_bill_to_the_day_before_the_third_payday()
+    {
+        var t = Ledger.Timeline(Nov10, TimelineOctober(), TimelineNovember(), [TimelineDecember()]);
+
+        Assert.Equal(("ok", "", Nov10, 708.42m, D("2026-10-30"), D("2026-12-31")), (t.Status, t.Message, t.Today, t.BalanceNow, t.LastPayday, t.CoversThrough));
+        Assert.Equal(new[] { new PayDate(D("2026-11-15"), 2100.42m), new PayDate(D("2026-11-30"), 2600.42m), new PayDate(D("2026-12-14"), 3161.09m) }, t.Paydays);
+        Assert.Equal(new[]
+        {
+            new Bill("November", 5, "Glasses (2/4)", 231.58m, D("2026-11-10"), false, 708.42m),
+            new Bill("November", 6, "Discover", 108, D("2026-11-11"), true, 600.42m),
+            new Bill("November", 8, "Mortgage Catch-Up", 1000, D("2026-11-15"), false, 1100.42m),
+            new Bill("December", 3, "Mortgage", 1085.33m, D("2026-12-01"), false, 1915.09m), // Gas, on the third payday, isn't
+        }, t.Bills);
+    }
+
+    [Fact]
+    public void Without_next_months_tab_the_timeline_stops_where_the_sheet_does()
+    {
+        var t = Ledger.Timeline(Nov10, TimelineOctober(), TimelineNovember(), []);
+
+        Assert.Equal([D("2026-11-15"), D("2026-11-30")], t.Paydays.Select(p => p.Date));
+        Assert.Equal(["Glasses (2/4)", "Discover", "Mortgage Catch-Up"], t.Bills.Select(b => b.Item)); // through Nov 29
+        Assert.Equal(D("2026-11-30"), t.CoversThrough);
+        Assert.Null(Ledger.Timeline(Nov10, lastMonth: null, TimelineNovember(), []).LastPayday);
+    }
+
+    [Fact]
+    public void An_unchecked_bill_from_last_month_starts_it_earlier_and_a_starting_balance_is_never_a_bill()
+    {
+        var t = Ledger.Timeline(Nov10, TimelineOctober(lateBill: true), TimelineNovember(start: -40), [TimelineDecember()]);
+
+        Assert.Equal([("October", 3, false), ("October", 5, true), ("November", 3, true), ("November", 4, true), ("November", 5, false)],
+            t.Bills.Take(5).Select(b => (b.Tab, b.Row, b.Paid)));
+        Assert.DoesNotContain(t.Bills, b => b.Item == "Starting balance");
+    }
+
+    [Fact]
+    public void A_misdated_row_on_a_later_tab_is_left_out_and_never_moves_now()
+    {
+        // A January tab copied from December, its dates not changed yet.
+        var january = Tab("January",
+            R(2, "2026-12-01", "Starting balance", 4579.09m, 4579.09m, false, formula: null),
+            R(3, "2026-12-14", "PAYCHECK", 1500, 6079.09m, false),
+            R(4, "2026-12-30", "PAYCHECK", 1500, 7579.09m, false));
+
+        var t = Ledger.Timeline(Nov10, TimelineOctober(), TimelineNovember(), [TimelineDecember(), january]);
+        Assert.DoesNotContain(t.Bills, b => b.Item is "Loan Rehabilitation" or "Primary Care"); // dated in November on December's tab
+        Assert.Equal(D("2026-11-10"), t.Bills[0].Date);
+
+        var december = Ledger.Timeline(new DateOnly(2026, 12, 15), TimelineNovember(), TimelineDecember(), [january]);
+        Assert.Equal([D("2026-12-30")], december.Paydays.Select(p => p.Date)); // not January's copies of December's
+        Assert.Equal(3099.09m, december.BalanceNow); // Gas on Dec 14, not Primary Care's "Nov 17" lower down
+        Assert.Equal(D("2026-12-14"), december.LastPayday);
+        Assert.Equal(D("2027-01-31"), december.CoversThrough);
+    }
+
+    [Fact]
+    public void Each_tab_read_gives_its_whole_tabs_low_oldest_first()
+    {
+        var december = TimelineDecember();
+        december.Rows.Add(R(9, "2026-12-31", "Klarna", -37.7m, 10, false)); // after the last payday listed: not in bills, still the low
+
+        var t = Ledger.Timeline(Nov10, TimelineOctober(), TimelineNovember(), [december]);
+
+        Assert.Equal([new MonthLow("2026-10", 480), new MonthLow("2026-11", 600.42m), new MonthLow("2026-12", 10)], t.MonthLows);
+        Assert.Equal(Ledger.Glance(TimelineNovember()).Lowest!.Balance, t.MonthLows[1].Balance); // what the glance says
+        Assert.DoesNotContain(t.Bills, b => b.Item == "Klarna");
+
+        var noBalances = Tab("October", R(2, "2026-10-01", "Rent", -800, 0, false) with { Balance = null });
+        Assert.Equal(["2026-11", "2026-12"], Ledger.Timeline(Nov10, noBalances, TimelineNovember(), [december]).MonthLows.Select(l => l.Month));
     }
 
     [Fact]

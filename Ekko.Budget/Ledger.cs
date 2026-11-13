@@ -80,7 +80,7 @@ public static partial class Ledger
         };
         if (coming.Count > 0)
             parts.Add($"Still coming in: {List(coming, 3)}.");
-        if (month.Rows.Where(r => r.Balance is not null).MinBy(r => r.Balance) is { } lowest)
+        if (Lowest(month) is { } lowest)
             parts.Add($"Lowest balance {Money(lowest.Balance!.Value)}, after {lowest.Item}{On(lowest.Date)}.");
         if (month.Rows.LastOrDefault(r => r.Balance is not null) is { } last)
             parts.Add($"Ending balance {Money(last.Balance!.Value)}.");
@@ -89,10 +89,14 @@ public static partial class Ledger
         return string.Join(" ", parts);
     }
 
-    /// <summary>The numbers <see cref="Status"/> reads out, kept as numbers. Bills are what Status counts: unchecked money out.</summary>
-    public static Glance Glance(Month month)
+    /// <summary>
+    /// The numbers <see cref="Status"/> reads out, kept as numbers. Bills are what Status counts: unchecked money out.
+    /// The message stays as it was: the desk shows it.
+    /// </summary>
+    /// <param name="nextMonth">Next month's tab, for <see cref="UntilPayday"/> once this month has no paycheck left; null if there's none.</param>
+    public static Glance Glance(Month month, Month? nextMonth = null)
     {
-        var bills = month.Rows.Where(r => !r.IsStart && !r.Complete && r.Amount < 0).ToList();
+        var bills = month.Rows.Where(Unpaid).ToList();
         var left = -bills.Sum(r => r.Amount!.Value);
         var next = bills.OrderBy(r => r.Date ?? DateOnly.MaxValue).FirstOrDefault(); // stable: same date keeps sheet order
         var ending = month.Rows.LastOrDefault(r => r.Balance is not null)?.Balance;
@@ -104,9 +108,89 @@ public static partial class Ledger
             parts.Add($"Next: {next.Item}, {Money(-next.Amount!.Value)}{On(next.Date)}.");
         if (ending is { } e)
             parts.Add($"Ending balance {Money(e)}.");
-        return new Glance("ok", string.Join(" ", parts), bills.Count, left, ending,
-            next is null ? null : new NextBill(next.Item, -next.Amount!.Value, next.Date));
+        return new Glance("ok", string.Join(" ", parts), bills.Count, left, ending, next is null ? null : ToEntry(month, next),
+            Lowest(month) is { } low ? new Low(low.Balance!.Value, low.Item, low.Date) : null, UntilPayday(month, nextMonth));
     }
+
+    /// <summary>The row with the tab's lowest balance: the one Status reads out, and the sheet's MIN(D2:D31). Null if no row has a balance.</summary>
+    public static Row? Lowest(Month month) => month.Rows.Where(r => r.Balance is not null).MinBy(r => r.Balance);
+
+    /// <summary>
+    /// Money in named "paycheck". Not just any money in: stipends, bonuses, cashback and eBay sales come in too, and on
+    /// a tab a stipend can be dated before the first paycheck (DR-45).
+    /// </summary>
+    public static bool IsPaycheck(Row row) => !row.IsStart && row.Amount > 0 && Words(row.Item).Contains("paycheck");
+
+    /// <summary>The tab's earliest-dated unchecked paycheck (the first in sheet order on a tie), or null.</summary>
+    public static Row? Paycheck(Month? month) => month?.Rows.Where(r => !r.Complete && r.Date is not null && IsPaycheck(r)).MinBy(r => r.Date);
+
+    /// <summary>
+    /// The next unchecked paycheck and the unchecked bills to cover before it: overdue ones too, but not the paycheck's
+    /// own day (it covers those), and undated ones last. With no paycheck left this month, next month's first one, after
+    /// the rest of this month's bills. With none on either tab, every unchecked bill this month and no paycheck.
+    /// </summary>
+    public static Payday UntilPayday(Month month, Month? nextMonth)
+    {
+        // A tab's unchecked bills; with a paycheck, only those dated before it (or not dated at all).
+        static IEnumerable<Entry> Bills(Month m, Row? pay) =>
+            m.Rows.Where(r => Unpaid(r) && (pay is null || r.Date is null || r.Date < pay.Date)).Select(r => ToEntry(m, r));
+
+        IEnumerable<Entry> bills;
+        var payMonth = month;
+        var pay = Paycheck(month);
+        if (pay is not null)
+            bills = Bills(month, pay);
+        else if ((pay = Paycheck(nextMonth)) is not null)
+            (bills, payMonth) = (Bills(month, null).Concat(Bills(nextMonth!, pay)), nextMonth!);
+        else
+            bills = Bills(month, null);
+
+        var ordered = bills.OrderBy(b => b.Date ?? DateOnly.MaxValue).ToList(); // stable: a tie keeps sheet order, undated go last
+        return new Payday(pay is null ? null : ToEntry(payMonth, pay), ordered, ordered.Sum(b => b.Amount));
+    }
+
+    /// <summary>
+    /// Pay periods across tabs, in date order (DR-47). Balances are the sheet's own cells, never added up here: each tab's
+    /// Starting balance links the one before, and a checkbox never changes a balance. Undated rows have no place on it.
+    /// </summary>
+    /// <param name="lastMonth">Last month's tab, or null if there's none.</param>
+    /// <param name="after">The tabs after this month's, in order, as many as were read.</param>
+    public static Timeline Timeline(DateOnly today, Month? lastMonth, Month month, IReadOnlyList<Month> after)
+    {
+        var first = new DateOnly(today.Year, today.Month, 1);
+        // A later tab counts only rows dated in its own month or after. December's "11/08" is a typo for 12/08, and January's
+        // tab still carries December's dates: taken as written, they'd put December's bills and paydays in the wrong place.
+        static IEnumerable<(Month Tab, Row Row)> On(Month? tab, DateOnly from) =>
+            tab is null ? [] : tab.Rows.Where(r => r.Date >= from).Select(r => (tab, r));
+        var rows = On(lastMonth, DateOnly.MinValue).Concat(On(month, DateOnly.MinValue))
+            .Concat(after.SelectMany((tab, i) => On(tab, first.AddMonths(i + 1))))
+            .OrderBy(x => x.Row.Date) // stable: a tie keeps tab and sheet order
+            .ToList();
+
+        var paydays = rows.Where(x => IsPaycheck(x.Row) && x.Row.Date > today).Take(3).Select(x => new PayDate(x.Row.Date!.Value, x.Row.Balance)).ToList();
+        var through = first.AddMonths(after.Count + 1).AddDays(-1);
+        var bills = rows.Where(x => !x.Row.IsStart && x.Row.Amount < 0).ToList();
+        var from = bills.FirstOrDefault(x => !x.Row.Complete).Row?.Date ?? today;
+        var until = paydays.Count > 0 ? paydays[^1].Date.AddDays(-1) : through;
+        // Every tab read, whole, whatever the bills leave out: the same low the glance gives and the sheet's box shows.
+        List<MonthLow> lows = [];
+        foreach (var (tab, start) in new[] { (lastMonth, first.AddMonths(-1)), (month, first) }.Concat(after.Select((m, i) => ((Month?)m, first.AddMonths(i + 1)))))
+            if (tab is not null && Lowest(tab) is { } low)
+                lows.Add(new MonthLow(start.ToString("yyyy-MM", CultureInfo.InvariantCulture), low.Balance!.Value));
+        return new Timeline("ok", "", today,
+            // By date, not sheet order: a misdated row below the paycheck would otherwise make "now" the balance after payday.
+            month.Rows.Where(r => r.Date <= today && r.Balance is not null).OrderBy(r => r.Date).LastOrDefault()?.Balance,
+            rows.LastOrDefault(x => IsPaycheck(x.Row) && x.Row.Date <= today).Row?.Date,
+            paydays,
+            bills.Where(x => x.Row.Date >= from && x.Row.Date <= until)
+                .Select(x => new Bill(x.Tab.Tab, x.Row.Number, x.Row.Item, -x.Row.Amount!.Value, x.Row.Date!.Value, x.Row.Complete, x.Row.Balance))
+                .ToList(),
+            through, lows);
+    }
+
+    private static bool Unpaid(Row r) => !r.IsStart && !r.Complete && r.Amount < 0;
+
+    private static Entry ToEntry(Month month, Row r) => new(r.Item, Math.Abs(r.Amount!.Value), r.Date, month.Tab, r.Number);
 
     /// <summary>
     /// The unchecked rows a request means. By name when the words name something: every word said starts a word of the
